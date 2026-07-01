@@ -1,8 +1,7 @@
 # Reporting
 
-Esta pasta hospedará a geração de artefatos da V1:
+Esta pasta hospedara a geracao de artefatos da V1:
 
 - tabelas
-- gráficos
-- relatórios em PDF
-
+- graficos
+- relatorios em PDF (ex.: extrato executivo de royalties por artista/periodo)

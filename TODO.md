@@ -2,78 +2,68 @@
 
 ## Repositorio
 
-- local: `/Users/joao/Documents/Codex/2026-06-25/mistral-analytics-agent`
-- remoto: `https://github.com/machado000/mistral-analytics-agent`
+- local: `~/Projetos/KOND-analytics-agent`
+- remoto: a definir (renomear/criar `kond-royalties-agent` no GitHub)
 
-## Arquitetura de dados (multi-projeto)
+## Contexto da refatoracao (2026-07-01)
 
-- Projetos de origem com pipelines agendados de fetch: `g-analytics-487213` (GA4),
-  `facebook-ads-487216`, `gads-487211`
-- O service account do MCP nao tem permissao nesses projetos de origem
-- Todas as tabelas sao copiadas para `mistral-analytics`, onde rodam os testes,
-  validacoes e o agente MCP consulta os dados
-- Os scripts ETL bronze/silver (`etl/*.sql`) sao agendados como scheduled queries
-  dentro de `g-analytics-487213`, na mesma pipeline que faz o fetch — os dados
-  processados sao copiados para `mistral-analytics` junto com o resto
-- `bronze_dim_session_traffic.sql` ja foi agendado nesse fluxo (2026-06-26)
-
-## Estado validado
-
-- query controlada em BigQuery: pronta
-- selecao de datasets GA4 (bronze/silver/raw): pronta
-- atribuicao de trafego via ga4_dim_session_traffic: pronta (tabela canonica trocada em 2026-06-26)
-- silver ga4_ecommerce (receita agregada): pronta, recalculada contra ga4_dim_session_traffic
-- teste de acuracia entre datasets: pronto, `pytest -m slow` 2 passed (corrigido em 2026-06-26)
-- suite completa: `pytest` 14 passed
-- dicionario de colunas: pronto (`config/column_dictionary.yml`), com secao
-  `mutually_exclusive_groups` formalizando a regra GA4
-- `config/bigquery_sources.yml`: documenta projetos de origem e resolucao de
-  fonte padrao (default/alternatives) por logical_source
-- `semantic_catalog/catalog.yml`: 4 novas metricas (users, orders,
-  engaged_sessions, new_users), validadas contra BigQuery
-- sintese com OpenAI: pronta
-- fallback deterministico: pronto
+Este projeto era um agente de marketing analytics sobre BigQuery
+(GA4/Google Ads/Facebook Ads). Foi refatorado para consultar performance de
+royalties/receita de artistas em Postgres (uma conexao, varios schemas via
+`search_path`). O schema real foi validado em 2026-07-01 contra o banco de
+producao (`describe-schema` + consultas de amostragem): o agente consulta
+`public.vw_ft_dados_analiticos_union` (10.3M linhas), uma view que unifica
+as fact tables de todas as origens/distribuidoras (DSU, Omie, Orchard,
+Universal, Warner Chappel, Warner Music).
 
 ## Tarefas pendentes
 
-### Limpeza
+### Qualidade de dados — investigar
 
-0. [ ] Avaliar se a tabela antiga `ga4_bronze.dim_session_traffic` pode ser removida (substituida por `ga4_dim_session_traffic`)
+1. [ ] Confirmar se `ft_somlivre_sonymusic` esta incluida em
+   `vw_ft_dados_analiticos_union` (nao apareceu nos valores distintos de
+   `origem` observados na amostra inicial)
+2. [ ] Mapear o significado de `quantity` por combinacao de
+   `origem`/`revenue_type` (ex.: para `origem='DSU'` +
+   `revenue_type='Shows'`, quantity=1 parece ser contagem de
+   shows/contratos, nao streams — ver `config/column_dictionary.yml`)
+3. [ ] Confirmar com o time se `origem='Omie'` (ERP financeiro) deve
+   continuar misturado na mesma view de "performance de royalties" ou se
+   deveria ser filtrado/separado por padrao
+4. [ ] Avaliar se `origem='Warner Chappel'` (grafia com uma letra 'l' no
+   dado) deveria ser corrigida na origem, ou se o agente deve continuar
+   compensando isso no planner (ja implementado em
+   `mcp_server/planner.py::FILTER_KEYWORDS`)
 
-### Planner — proximo passo
+### Planner — PT-BR
 
-20. [ ] Adicionar keywords PT-BR para as novas metricas no planner (`usuarios`,
-    `novos usuarios`, `pedidos`, `sessoes engajadas`) — hoje a inferencia de
-    linguagem natural nao reconhece esses termos, so funciona passando
-    `metrics` explicitamente
+5. [ ] Ampliar sinonimos de metricas/dimensoes com o vocabulario real do
+   negocio (ex.: "master" vs "gravadora", "publishing" vs "editora")
+6. [ ] Avaliar se vale expor uma dimensao `label`/gravadora a partir de
+   `matched_artista_id` -> `dim_artistas.gravadora` (hoje nao exposta)
 
-### Novas tabelas descobertas (2026-06-26) — avaliar integracao
+### Enriquecimento (schemas de detalhe ainda nao usados)
 
-1. [ ] google_ads: avaliar uso de `p_ads_search_term_view_8784814486` (termos de busca reais) para enriquecer analise de keywords
-2. [ ] google_ads: avaliar uso de `p_ads_asset_group_8784814486` para campanhas Performance Max
-3. [ ] google_ads: investigar `p_ads_video_8784814486` com apenas 16 linhas — confirmar se e gap de coleta ou dado esperado
-4. [ ] facebook: avaliar uso de `fb_campaigns`, `fb_adsets`, `fb_ad_summary` para enriquecer dimensoes de campanha (objective, status, targeting)
-5. [ ] facebook: `fb_ad_accounts` — avaliar uso para multi-conta caso aplicavel
-
-### Qualidade de dados — ads
-
-6. [ ] Revisar conexao com `google_ads` — verificar schema, cobertura de datas e completude de metricas (cost, conversions, impressions)
-7. [ ] Revisar conexao com `facebook_ads_bronze` e `facebook_ads_silver` — verificar schema, cobertura e metricas disponiveis (spend, reach, purchase)
-8. [ ] Criar rotina de validacao para `facebook_ads_bronze` vs `facebook_ads_silver` (mesmo padrao do teste GA4: comparar totais entre camadas)
-9. [ ] Identificar problemas de qualidade em `google_ads` — campos nulos, metricas zeradas, gaps de datas, duplicatas
-10. [ ] Identificar problemas de qualidade em `facebook_ads_bronze` — campos nulos, metricas zeradas, gaps de datas, duplicatas
-11. [ ] Identificar problemas de qualidade em `facebook_ads_silver` — campos nulos, metricas zeradas, gaps de datas, consistencia com bronze
-12. [ ] Validar cobertura e completude das novas tabelas `fb_ad_accounts`, `fb_ad_summary`, `fb_adsets`, `fb_campaigns`
+7. [ ] Avaliar uso de `universal.dim_musica`/`dim_compositor` para
+   analises por musica/compositor (hoje so ha o grao artista+periodo)
+8. [ ] Avaliar uso de `warner_chappell.ft_warner_statement` para o mesmo
+   tipo de detalhe do lado Warner Chappell
+9. [ ] Avaliar join com `public.dim_artistas` (via `matched_artista_id`)
+   para expor gravadora, CPF, IDs por plataforma/distribuidor
 
 ### Relatorio PDF
 
-13. [ ] Criar modulo de PDF em `reporting/`
-14. [ ] Adicionar comando CLI `generate-report`
-15. [ ] Gerar PDF com base na pergunta: "Como foi receita, investimento e ROAS por canal nos ultimos 7 dias?"
-16. [ ] Validar localmente
+10. [ ] Criar modulo de PDF em `reporting/`
+11. [ ] Adicionar comando CLI `generate-report`
+12. [ ] Gerar PDF de exemplo: extrato de receita/royalties de um artista em
+    um periodo
+13. [ ] Validar localmente
 
 ### Infraestrutura
 
-17. [ ] Converter CLI em tools MCP reais
-18. [ ] Avaliar output schema mais estrito para resposta OpenAI
-19. [ ] Definir contrato de artefato visual alem da sugestao
+14. [ ] Converter CLI em tools MCP reais alem das ja existentes
+    (`generate_royalty_report` ainda pendente)
+15. [ ] Avaliar output schema mais estrito para resposta OpenAI
+16. [ ] Definir contrato de artefato visual alem da sugestao
+17. [ ] Decidir se o repositorio remoto sera renomeado/criado como
+    `kond-royalties-agent` no GitHub

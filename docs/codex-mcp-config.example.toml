@@ -1,4 +1,4 @@
-# Exemplo de configuracao do servidor MCP mistral-analytics para o OpenAI Codex CLI.
+# Exemplo de configuracao do servidor MCP kond-royalties para o OpenAI Codex CLI.
 #
 # O Codex CLI le configuracao de MCP de um arquivo global do usuario
 # (normalmente ~/.codex/config.toml), nao de um arquivo dentro do repositorio.
@@ -9,14 +9,13 @@
 #   python3 -m venv .venv
 #   source .venv/bin/activate
 #   pip install -e ".[dev]"
-#   cp .env.example .env  # preencher com suas credenciais
-#   # colocar sua chave de service account em secrets/gcp-service-account.json
+#   cp .env.example .env  # preencher com OPENAI_API_KEY, DATABASE_URL e POSTGRES_SCHEMAS
 
-[mcp_servers.mistral_analytics]
-command = "/CAMINHO/ABSOLUTO/PARA/mistral-analytics-agent/.venv/bin/python"
+[mcp_servers.kond_royalties]
+command = "/CAMINHO/ABSOLUTO/PARA/kond-royalties-agent/.venv/bin/python"
 args = ["-m", "mcp_server.server", "serve-mcp"]
 startup_timeout_sec = 120
 
-# Nao e necessario declarar [mcp_servers.mistral_analytics.env] — o servidor
+# Nao e necessario declarar [mcp_servers.kond_royalties.env] — o servidor
 # carrega automaticamente o arquivo .env de dentro do repositorio (ver
 # mcp_server/settings.py). Basta ter o .env preenchido localmente.

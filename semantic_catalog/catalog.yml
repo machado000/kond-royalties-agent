@@ -1,63 +1,40 @@
+# Catalogo semantico do agente KOND (royalties de artistas).
+#
+# STATUS: VALIDADO contra o banco real em 2026-07-01. Fonte:
+# public.vw_ft_dados_analiticos_union (ver config/postgres_sources.yml e
+# config/column_dictionary.yml para o detalhe completo, incluindo notas de
+# qualidade de dados).
+
 metrics:
+  quantity:
+    label: Quantidade
+    description: >
+      Quantidade associada a linha. O significado varia por origem/tipo de
+      receita (streams, unidades vendidas, contagem de shows, etc.) — ver
+      config/column_dictionary.yml.
+    expression_hint: sum(quantity)
   revenue:
     label: Receita
-    description: Receita agregada do ecommerce.
+    description: Valor monetario (receita/royalty) associado a linha.
     expression_hint: sum(revenue)
-  spend:
-    label: Investimento
-    description: Investimento em mídia paga.
-    expression_hint: sum(spend)
-  roas:
-    label: ROAS
-    description: Retorno sobre investimento em mídia.
-    expression_hint: sum(revenue) / nullif(sum(spend), 0)
-  conversions:
-    label: Conversões
-    description: Conversões/transações atribuídas por origem.
-    expression_hint: sum(conversions)
-  orders:
-    label: Pedidos
-    description: Total de pedidos (equivalente a conversões no ecommerce).
-    expression_hint: sum(orders)
-  sessions:
-    label: Sessões
-    description: Sessões medidas no GA4. Zero para fontes de ads (sem dado de sessão).
-    expression_hint: sum(sessions)
-  engaged_sessions:
-    label: Sessões engajadas
-    description: Sessões com engajamento (GA4). Zero para fontes de ads.
-    expression_hint: sum(engaged_sessions)
-  users:
-    label: Usuários
-    description: Usuários totais no período (GA4) ou compradores distintos (ecommerce).
-    expression_hint: sum(users)
-  new_users:
-    label: Novos usuários
-    description: Usuários novos no período. Zero para fontes de ads.
-    expression_hint: sum(new_users)
 
 dimensions:
-  date:
-    label: Data
-  channel:
-    label: Canal
-    description: Canal de aquisição normalizado (paid_search, organic_search, paid_social, email, referral, direct, unknown).
-  platform:
-    label: Plataforma
-    description: Plataforma de origem do dado — ga4, google_ads ou facebook_ads.
-  campaign:
-    label: Campanha
+  period:
+    label: Periodo
+    description: Mes de referencia, formato 'AAAA-MM' (grao mensal, nao diario).
+  artist:
+    label: Artista
+    description: Nome do artista normalizado (casado contra o cadastro de artistas).
+  origem:
+    label: Origem
+    description: >
+      Sistema/distribuidora de origem da linha (DSU, Omie, Orchard,
+      Universal, Warner Chappel, Warner Music).
+  revenue_type:
+    label: Tipo de receita
+    description: Categoria da receita (Editora, Gravadora, Publicidade, Shows, N/D).
 
-# Fontes aprovadas para consulta. Os datasets ga4_silver, ga4_bronze e
-# analytics_253977277 sao MUTUAMENTE EXCLUSIVOS (mesmos dados em granularidades
-# diferentes) — nunca combinar mais de um na mesma consulta. Ver
-# config/column_dictionary.yml para o dicionario completo de colunas e tabelas,
-# e config/bigquery_sources.yml para a resolucao de fonte padrao por logical_source.
+# Fonte aprovada para consulta. Hoje o agente le uma unica view ja
+# consolidada entre distribuidoras (ver config/postgres_sources.yml::query_source).
 approved_sources:
-  - ga4_silver           # padrao GA4: sessoes (ga4_general_traffic) + receita (ga4_ecommerce)
-  - ga4_bronze           # GA4 evento a evento, mutuamente exclusivo com ga4_silver/raw
-  - analytics_253977277  # GA4 raw export, mutuamente exclusivo com ga4_silver/bronze
-  - google_ads
-  - facebook_ads_silver  # preferido sobre facebook_ads_bronze (tipos corrigidos)
-  - facebook_ads_bronze
-
+  - public.vw_ft_dados_analiticos_union

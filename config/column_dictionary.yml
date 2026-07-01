@@ -1,335 +1,171 @@
-# Dicionario de colunas entre datasets
+# Dicionario de colunas do agente KOND (royalties de artistas)
 #
-# Mapeia colunas semanticamente equivalentes entre as tabelas do projeto.
-# Usado como referencia para ETL, validacao e queries do agente MCP.
+# STATUS: VALIDADO contra o banco real em 2026-07-01 via
+# `kond-royalties-mcp describe-schema` + consultas de amostragem.
 #
-# Convencao: o nome canonico (chave) e o que o agente e a camada silver usam.
-# Os aliases listam as variantes encontradas em cada fonte.
+# A tabela de consulta configurada em config/postgres_sources.yml
+# (query_source) e `public.vw_ft_dados_analiticos_union`: uma view que
+# unifica, no schema `public`, as fact tables de todas as
+# origens/distribuidoras em uma unica tabela larga. 10.3M linhas em
+# 2026-07-01.
 #
-# Ultima atualizacao: 2026-06-26 (apos descoberta de novas tabelas em
-# google_ads e facebook_ads_bronze/silver).
-#
-# Arquivos relacionados:
-# - config/bigquery_sources.yml — projetos de origem, datasets e resolucao de
-#   fonte padrao por logical_source (default/alternatives)
-# - semantic_catalog/catalog.yml — metricas e dimensoes aprovadas para o agente,
-#   com expression_hint validado contra as colunas do CTE base
-#   (mcp_server/query_builder.py)
-
-mutually_exclusive_groups:
-  # Datasets que contem os MESMOS dados em granularidades diferentes.
-  # Usar mais de um na mesma consulta gera duplicacao/dupla-contagem.
-  # Aplicado em mcp_server/query_builder.py::_resolve_datasets (levanta
-  # ValueError se mais de um for solicitado explicitamente).
-  ga4:
-    members:
-      - ga4_silver           # agregado: sessoes (general_traffic) + receita (ecommerce)
-      - ga4_bronze            # evento a evento, pos-ETL (normalizado, deduplicado)
-      - analytics_253977277   # raw export do GA4, sem ETL
-    default: ga4_silver
-
-tables:
-  analytics_253977277:
-    - events_YYYYMMDD          # GA4 raw export, particionado por data (sharded)
-    - pseudonymous_users_YYYYMMDD  # GA4 raw, perfis de usuario pseudonimo (sharded)
-    - users_YYYYMMDD            # GA4 raw, perfis de usuario identificado (sharded, cobertura parcial)
-    - conversion_events         # view/tabela auxiliar, 0 rows observado
-    - ecommerce_events          # view/tabela auxiliar, 0 rows observado
-    - engagement_events         # view/tabela auxiliar, 0 rows observado
-    - page_view_events          # view/tabela auxiliar, nao explorado ainda
-    - session_start_events      # view/tabela auxiliar, nao explorado ainda
-  ga4_bronze:
-    - ga4_events_sessionstart   # fonte canonica de atribuicao de trafego
-    - ga4_dim_session_traffic   # dimensao de sessao (user_pseudo_id + ga_session_id) -- CANONICA
-    - ga4_events_click
-    - ga4_events_ecommerce
-    - ga4_events_pageview
-    - ga4_events_submit
-  ga4_silver:
-    - ga4_general_traffic       # sessoes/usuarios, agregado de sessionstart
-    - ga4_ecommerce             # receita/conversoes, agregado de ga4_events_ecommerce
-    - ga4_clicks
-    - ga4_pageviews
-  google_ads:
-    - p_ads_ad_group_ad_8784814486       # performance por ad (usado hoje pelo agente)
-    - p_ads_asset_group_8784814486       # performance por asset group (Performance Max)
-    - p_ads_conversion_action_8784814486 # acoes de conversao configuradas
-    - p_ads_keyword_view_8784814486      # performance por keyword
-    - p_ads_search_term_view_8784814486  # termos de busca reais (search query report)
-    - p_ads_video_8784814486             # performance de anuncios em video
-  facebook_ads_bronze:
-    - fb_ad_insights   # performance diaria por ad (usado hoje pelo agente)
-    - fb_ad_accounts   # metadados de conta (13 rows)
-    - fb_ad_summary    # metadados de ad (status, targeting bruto)
-    - fb_adsets        # metadados de adset (orcamento, datas)
-    - fb_campaigns     # metadados de campanha (objetivo, orcamento)
-  facebook_ads_silver:
-    - fb_ad_insights
-    - fb_ad_summary
-    - fb_adsets
-    - fb_campaigns
+# Convencao: o nome canonico (chave) e o que o agente e o catalogo semantico
+# usam em `expression_hint` (ver semantic_catalog/catalog.yml) e nas
+# dimensoes (usadas como nome de coluna literal em mcp_server/query_builder.py).
 
 canonical_columns:
 
-  # --- Dimensoes temporais ---
-  date:
-    description: Data do evento ou registro
-    type: DATE
-    sources:
-      ga4_bronze: event_date
-      ga4_silver: event_date
-      google_ads: segments_date
-      facebook_ads_bronze.fb_ad_insights: date_start  # STRING, requer cast
-      facebook_ads_silver.fb_ad_insights: date_start  # DATE
+  # --- Dimensao temporal ---
+  period:
+    description: >
+      Periodo de referencia, grao MENSAL, formato texto 'AAAA-MM' (ex.:
+      '2026-05'). NAO e uma coluna DATE — comparacoes de intervalo sao
+      feitas por comparacao de string (funciona pois o formato ordena
+      lexicograficamente igual a ordenacao cronologica).
+    type: TEXT
+    source: public.vw_ft_dados_analiticos_union.period
+    notes:
+      - "Existe tambem `revenue_period`, identico a `period` em todas as amostras observadas."
 
-  # --- Atribuicao de trafego ---
-  traffic_source:
-    description: Origem do trafego (google, facebook, direct, etc.)
-    type: STRING
-    sources:
-      ga4_bronze: traffic_source
-      ga4_silver: traffic_source
-      google_ads: null  # implicito, sempre google
-      facebook_ads_bronze: null  # implicito, sempre facebook/meta
-      facebook_ads_silver: null
+  # --- Dimensao de artista ---
+  artist:
+    description: >
+      Nome do artista ja normalizado/casado (matched) contra
+      `dim_artistas`. Preferir esta coluna a `artist_raw` (nome bruto como
+      veio do arquivo de origem, antes do matching).
+    type: TEXT
+    source: public.vw_ft_dados_analiticos_union.artist
 
-  traffic_medium:
-    description: Meio do trafego (organic, paid, cpc, referral, etc.)
-    type: STRING
-    sources:
-      ga4_bronze: traffic_medium
-      ga4_silver: traffic_medium
-      google_ads: null  # implicito, inferido de campaign_advertising_channel_type
-      facebook_ads_bronze: null  # implicito, sempre paid_social
-      facebook_ads_silver: null
+  # --- Dimensao de origem/distribuidora ---
+  origem:
+    description: >
+      Sistema/distribuidora de onde a linha veio. Valores observados:
+      'DSU', 'Omie', 'Orchard', 'Universal', 'Warner Chappel', 'Warner Music'.
+    type: TEXT
+    source: public.vw_ft_dados_analiticos_union.origem
+    notes:
+      - "'Warner Chappel' (uma unica letra 'l') e o valor real gravado nesta
+         coluna — divergente do nome do schema Postgres `warner_chappell`
+         (duas letras 'l', grafia correta da empresa). Filtros devem usar a
+         grafia com uma letra 'l' para bater com os dados."
+      - "'Omie' e um sistema de ERP financeiro (contas a pagar/receber), nao
+         um distribuidor de streaming — misturado nesta view junto com as
+         fontes de royalties propriamente ditas."
+      - "'DSU' cobre contratos/shows ao vivo (ver revenue_type='Shows'), nao
+         apenas royalties de gravacao/edicao."
 
-  traffic_campaign:
-    description: Nome da campanha
-    type: STRING
-    sources:
-      ga4_bronze: traffic_campaign
-      ga4_silver: traffic_campaign
-      google_ads: campaign_name
-      facebook_ads_bronze: campaign_name
-      facebook_ads_silver: campaign_name
+  # --- Dimensao de tipo de receita ---
+  revenue_type:
+    description: >
+      Categoria/linha de negocio da receita. Valores observados: 'Editora'
+      (publishing), 'Gravadora' (master/gravacao), 'Publicidade', 'Shows',
+      'N/D' (nao definido).
+    type: TEXT
+    source: public.vw_ft_dados_analiticos_union.revenue_type
 
-  # --- Metricas de custo ---
-  spend:
-    description: Investimento em midia (valor monetario)
-    type: FLOAT
-    sources:
-      ga4_bronze: null  # GA4 nao tem custo
-      ga4_silver: null
-      google_ads.p_ads_ad_group_ad_8784814486: metrics_cost_micros  # micros, dividir por 1_000_000
-      google_ads.p_ads_asset_group_8784814486: metrics_cost_micros
-      google_ads.p_ads_keyword_view_8784814486: metrics_cost_micros
-      google_ads.p_ads_search_term_view_8784814486: metrics_cost_micros
-      google_ads.p_ads_video_8784814486: metrics_cost_micros
-      facebook_ads_bronze.fb_ad_insights: spend  # STRING, requer cast
-      facebook_ads_silver.fb_ad_insights: spend  # FLOAT
-
-  # --- Metricas de alcance ---
-  impressions:
-    description: Total de impressoes/exibicoes
-    type: INTEGER
-    sources:
-      ga4_bronze: null
-      ga4_silver: null
-      google_ads.p_ads_ad_group_ad_8784814486: metrics_impressions
-      google_ads.p_ads_asset_group_8784814486: null  # nao disponivel nesta view
-      google_ads.p_ads_keyword_view_8784814486: metrics_impressions
-      google_ads.p_ads_search_term_view_8784814486: metrics_impressions
-      google_ads.p_ads_video_8784814486: metrics_impressions
-      facebook_ads_bronze.fb_ad_insights: impressions  # STRING, requer cast
-      facebook_ads_silver.fb_ad_insights: impressions  # INTEGER
-
-  clicks:
-    description: Total de cliques
-    type: INTEGER
-    sources:
-      ga4_bronze: null
-      ga4_silver: null
-      google_ads: metrics_clicks  # presente em todas as p_ads_* exceto conversion_action
-      facebook_ads_bronze.fb_ad_insights: clicks  # STRING, requer cast
-      facebook_ads_silver.fb_ad_insights: clicks  # INTEGER
-
-  reach:
-    description: Alcance (usuarios unicos impactados)
-    type: INTEGER
-    sources:
-      ga4_bronze: null
-      ga4_silver: null
-      google_ads: null
-      facebook_ads_bronze.fb_ad_insights: reach  # STRING, requer cast
-      facebook_ads_silver.fb_ad_insights: reach  # INTEGER
-
-  # --- Metricas de sessao ---
-  sessions:
-    description: Total de sessoes
-    type: INTEGER
-    sources:
-      ga4_bronze: null  # calculado via count distinct ga_session_id + user_pseudo_id
-      ga4_silver: total_sessions
-      google_ads: null
-      facebook_ads_bronze: null
-      facebook_ads_silver: null
-
-  users:
-    description: Total de usuarios
-    type: INTEGER
-    sources:
-      ga4_bronze: null  # calculado via count distinct user_pseudo_id
-      ga4_silver: total_users
-      google_ads: null
-      facebook_ads_bronze: null
-      facebook_ads_silver: null
-
-  # --- Metricas de conversao ---
-  conversions:
-    description: Total de conversoes
-    type: FLOAT
-    sources:
-      ga4_bronze: null  # calculado via count distinct transaction_id
-      ga4_silver: transactions
-      google_ads.p_ads_ad_group_ad_8784814486: metrics_conversions  # FLOAT
-      google_ads.p_ads_asset_group_8784814486: metrics_conversions
-      google_ads.p_ads_keyword_view_8784814486: metrics_conversions
-      google_ads.p_ads_search_term_view_8784814486: metrics_conversions
-      google_ads.p_ads_video_8784814486: metrics_conversions
-      google_ads.p_ads_conversion_action_8784814486: metrics_all_conversions
-      facebook_ads_bronze: null  # extraido de actions JSON
-      facebook_ads_silver.fb_ad_insights: purchase  # INTEGER, apenas evento de compra
+  # --- Metricas ---
+  quantity:
+    description: >
+      Quantidade associada a linha (streams, unidades ou contagem,
+      dependendo de origem/revenue_type — ex.: para origem='DSU' e
+      revenue_type='Shows', observado quantity=1 por show/contrato, nao
+      contagem de streams).
+    type: NUMERIC
+    source: public.vw_ft_dados_analiticos_union.quantity
 
   revenue:
-    description: Receita de conversoes
-    type: FLOAT
-    sources:
-      ga4_bronze: purchase_revenue
-      ga4_silver: revenue
-      google_ads.p_ads_ad_group_ad_8784814486: metrics_conversions_value
-      google_ads.p_ads_conversion_action_8784814486: metrics_all_conversions_value
-      facebook_ads_bronze: null  # nao disponivel diretamente
-      facebook_ads_silver: null  # nao disponivel
+    description: >
+      Valor monetario associado a linha (receita/royalty). Pode ser 0 (ex.:
+      linhas de shows sem valor apurado ainda).
+    type: NUMERIC
+    source: public.vw_ft_dados_analiticos_union.revenue
 
-  # --- Dimensoes de dispositivo ---
-  device_category:
-    description: Tipo de dispositivo (desktop, mobile, tablet)
-    type: STRING
-    sources:
-      ga4_bronze: device_category
-      ga4_silver: device_category
-      google_ads: null
-      facebook_ads_bronze: null
-      facebook_ads_silver: null
+  # --- Colunas presentes na view mas AINDA NAO expostas no catalogo semantico ---
+  # (documentadas para referencia futura, nao usadas em mcp_server/query_builder.py)
+  razao_social:
+    description: Razao social da entidade legal associada a linha (ex.: gravadora/empresa do artista).
+    type: TEXT
+    source: public.vw_ft_dados_analiticos_union.razao_social
+  origin_table:
+    description: Nome da fact table de origem antes da uniao (lineage/debug).
+    type: TEXT
+    source: public.vw_ft_dados_analiticos_union.origin_table
+  matched_artista_id:
+    description: FK para public.dim_artistas.id — permite enriquecer com gravadora, CPF, IDs por plataforma, etc.
+    type: INTEGER
+    source: public.vw_ft_dados_analiticos_union.matched_artista_id
+  artist_raw:
+    description: Nome do artista como veio do arquivo de origem, antes do matching contra dim_artistas.
+    type: TEXT
+    source: public.vw_ft_dados_analiticos_union.artist_raw
 
-  # --- Dimensoes de geografia ---
-  country:
-    description: Pais
-    type: STRING
-    sources:
-      ga4_bronze: country
-      ga4_silver: country
-      google_ads: null
-      facebook_ads_bronze: null
-      facebook_ads_silver: null
-
-  # --- Dimensoes de campanha (ads) ---
-  campaign_id:
-    description: ID da campanha
-    type: STRING
-    sources:
-      ga4_bronze: null
-      ga4_silver: null
-      google_ads: campaign_id  # INTEGER, presente em fb_ad_insights, fb_ad_summary, fb_adsets, fb_campaigns
-      facebook_ads_bronze: campaign_id
-      facebook_ads_silver: campaign_id
-
-  ad_group:
-    description: Grupo de anuncio ou conjunto
-    type: STRING
-    sources:
-      ga4_bronze: null
-      ga4_silver: null
-      google_ads: ad_group_name
-      facebook_ads_bronze: adset_name
-      facebook_ads_silver: adset_name
-
-  ad_id:
-    description: ID do anuncio individual
-    type: STRING
-    sources:
-      ga4_bronze: null
-      ga4_silver: null
-      google_ads.p_ads_ad_group_ad_8784814486: ad_group_ad_ad_id
-      facebook_ads_bronze.fb_ad_insights: ad_id
-      facebook_ads_bronze.fb_ad_summary: id
-      facebook_ads_silver.fb_ad_insights: null  # nao presente, agregado por adset
-      facebook_ads_silver.fb_ad_summary: ad_id
-
-  keyword:
-    description: Termo/keyword de busca paga
-    type: STRING
-    sources:
-      ga4_bronze: null
-      ga4_silver: null
-      google_ads.p_ads_keyword_view_8784814486: ad_group_criterion_keyword_text
-      google_ads.p_ads_search_term_view_8784814486: search_term_view_search_term  # termo real digitado pelo usuario
-      facebook_ads_bronze: null
-      facebook_ads_silver: null
-
-  # --- Dimensoes de plataforma (ads) ---
-  publisher_platform:
-    description: Plataforma de veiculacao
-    type: STRING
-    sources:
-      ga4_bronze: null
-      ga4_silver: null
-      google_ads: segments_ad_network_type
-      facebook_ads_bronze.fb_ad_insights: publisher_platform
-      facebook_ads_silver.fb_ad_insights: publisher_platform
-
-  platform_position:
-    description: Posicionamento do anuncio
-    type: STRING
-    sources:
-      ga4_bronze: null
-      ga4_silver: null
-      google_ads: null
-      facebook_ads_bronze.fb_ad_insights: platform_position
-      facebook_ads_silver.fb_ad_insights: platform_position
+tables:
+  public:
+    - vw_ft_dados_analiticos_union   # view unificada (query_source atual)
+    - dim_artistas                     # artista: nome civil/artistico, gravadora, IDs por plataforma/distribuidor
+    - dim_calendario                   # calendario diario (nao usado hoje — a view e mensal)
+    - dim_canal                        # canal (nao referenciado diretamente pela view unificada)
+    - dim_pais                         # pais (nao referenciado diretamente pela view unificada)
+    - dim_contas
+    - dim_omie_categoria
+    - dim_omie_grupo
+    - ft_dsu_controle_contratos
+    - ft_dsu_dados_analiticos          # fonte de origem='DSU' na view unificada
+    - ft_dsu_shows_logs
+    - ft_omie_dados_analiticos         # fonte de origem='Omie' na view unificada
+    - ft_orchard_dados_analiticos      # fonte de origem='Orchard' na view unificada
+    - ft_somlivre_sonymusic            # NAO observado em origem= (verificar se esta incluido na view)
+    - ft_universal_dados_analiticos    # fonte de origem='Universal' na view unificada
+    - ft_warner_chappell_dados_analiticos  # fonte de origem='Warner Chappel' na view unificada
+    - ft_warner_music_dados_analiticos # fonte de origem='Warner Music' na view unificada
+    - stg_omie_consolidado
+    - stg_orchard_revenue               # + variantes stg_orchard_revenue_YYYY_MM (particionado por mes)
+    - stg_somlivre_sonymusic
+    - stg_warner_music_details
+    - vw_debug_dsu_dados_analiticos
+    - vw_debug_omie_dados_analiticos
+    - vw_debug_orchard_dados_analiticos
+    - vw_debug_universal_dados_analiticos
+    - vw_debug_warner_chappell_dados_analiticos
+    - vw_debug_warner_music_dados_analiticos
+  universal:
+    - dim_cliente
+    - dim_compositor
+    - dim_fonte
+    - dim_grupo_renda
+    - dim_magmedia_fields
+    - dim_musica
+    - dim_tipo_renda
+    - stg_universal_magmedia
+  warner_chappell:
+    - dim_exploitation_source
+    - ft_warner_statement
+    - stg_warner_statement
+    - stg_warner_statement_old
 
 data_quality_notes:
-  ga4_bronze:
-    - "RESOLVIDO 2026-06-26: existiam 2 tabelas de dimensao de sessao (dim_session_traffic
-       e ga4_dim_session_traffic) com contagens de linha diferentes. ga4_dim_session_traffic
-       foi definida como canonica; todas as referencias em ETL e query_builder foram
-       atualizadas. A tabela dim_session_traffic antiga pode ser removida apos confirmacao."
-  facebook_ads_bronze:
-    - "fb_ad_insights: colunas spend, impressions, clicks, reach sao STRING — requerem CAST"
-    - "fb_ad_insights: coluna actions e um JSON serializado, requer parse para extrair conversoes"
-    - "fb_ad_insights: date_start e STRING, nao DATE"
-    - "fb_ad_accounts, fb_adsets, fb_campaigns: maioria das colunas numericas/data sao STRING"
-    - "Novas tabelas (fb_ad_accounts, fb_ad_summary, fb_adsets, fb_campaigns) ainda nao
-       validadas quanto a cobertura de datas ou completude — pendente"
-  facebook_ads_silver:
-    - "fb_ad_insights: coluna fequency tem typo (deveria ser frequency)"
-    - "fb_ad_insights: colunas de conversao (purchase, add_to_cart, etc.) ja extraidas do JSON"
-    - "fb_ad_insights: tipos corrigidos (spend FLOAT, impressions INTEGER, date_start DATE)"
-    - "fb_ad_summary, fb_adsets: campos de targeting (geo_locations, behaviors, interests)
-       sao JSON — uso direto em SQL requer JSON_EXTRACT"
-    - "Novas tabelas silver ainda nao tem teste de acuracia contra bronze (pendente,
-       analogo ao teste GA4 em tests/test_dataset_accuracy.py)"
-  google_ads:
-    - "p_ads_ad_group_ad_8784814486: metrics_cost_micros em micros (dividir por 1_000_000)"
-    - "p_ads_ad_group_ad_8784814486: campaign_id e INTEGER, nao STRING"
-    - "p_ads_ad_group_ad_8784814486: nenhuma tabela de ads tem dimensao de geografia ou dispositivo"
-    - "5 novas tabelas descobertas (asset_group, conversion_action, keyword_view,
-       search_term_view, video) — nao integradas ao agente MCP nem ao query_builder ainda"
-    - "p_ads_video_8784814486 tem apenas 16 linhas — verificar se e esperado ou se ha
-       gap de coleta"
-  analytics_253977277:
-    - "Tabelas auxiliares (conversion_events, ecommerce_events, engagement_events,
-       page_view_events, session_start_events) tem 0 linhas ou nao foram exploradas —
-       provavelmente views nao materializadas ou tabelas de schema apenas"
-    - "pseudonymous_users_* e users_* sao shards adicionais nao utilizados pelo agente
-       hoje — podem conter dados de perfil de usuario uteis para segmentacao futura"
+  public.vw_ft_dados_analiticos_union:
+    - "10.3M linhas em 2026-07-01 (select count(*))."
+    - "period/revenue_period sao TEXT em grao mensal ('AAAA-MM'), identicos em
+       todas as amostras observadas — nao ha granularidade diaria nesta view."
+    - "origem='Warner Chappel' (uma letra 'l') diverge da grafia correta e do
+       nome do schema `warner_chappell` (duas letras 'l')."
+    - "origem inclui 'Omie' (ERP financeiro geral) e 'DSU' (shows ao vivo),
+       nao apenas distribuidoras de streaming/publishing — 'performance de
+       royalties' nesta base e mais amplo, cobrindo qualquer receita
+       associada a um artista."
+    - "quantity=1 observado para origem='DSU' + revenue_type='Shows' —
+       provavelmente contagem de shows/contratos, nao streams. O
+       significado de quantity varia por origem/revenue_type e ainda nao
+       foi mapeado exaustivamente."
+    - "ft_somlivre_sonymusic nao apareceu nos valores distintos de origem
+       observados na amostra inicial — confirmar se esta incluida na view
+       ou se e uma fonte separada ainda nao unificada."
+  universal:
+    - "Schema de detalhe (dim_musica, dim_compositor, stg_universal_magmedia)
+       ainda nao consultado pelo agente — apenas a fact table unificada em
+       `public` e usada hoje."
+  warner_chappell:
+    - "Schema de detalhe (ft_warner_statement, stg_warner_statement) ainda
+       nao consultado pelo agente — apenas a fact table unificada em
+       `public` e usada hoje."

@@ -2,7 +2,7 @@
 
 ## Ferramentas iniciais
 
-### `get_marketing_catalog`
+### `get_royalty_catalog`
 
 Retorna o catalogo semantico ativo, com metricas, dimensoes e fontes aprovadas.
 
@@ -11,11 +11,31 @@ Resposta esperada:
 - versao do catalogo
 - metricas disponiveis
 - dimensoes disponiveis
-- datasets autorizados
+- fontes autorizadas (tabela/view em Postgres)
 
-### `run_marketing_query`
+### `diagnose_postgres_access`
 
-Executa uma consulta analitica controlada em BigQuery.
+Valida a conexao com o Postgres e lista os schemas acessiveis.
+
+### `describe_schema`
+
+Introspecta tabelas e colunas reais de um ou mais schemas via
+`information_schema`. Usada para descobrir o schema real do banco de
+royalties, substituindo a manutencao manual do dicionario de colunas como
+unica fonte de verdade.
+
+Entradas:
+
+- `schema` (opcional): nome do schema. Se omitido, usa todos os schemas
+  habilitados em `POSTGRES_SCHEMAS`.
+
+Saida:
+
+- `schema` -> `tabela` -> lista de colunas (`column`, `data_type`, `is_nullable`)
+
+### `run_royalty_query`
+
+Executa uma consulta analitica controlada no Postgres.
 
 Entradas:
 
@@ -33,7 +53,7 @@ Saida:
 - `row_count`
 - `source_tables`
 
-### `ask_marketing`
+### `ask_royalties`
 
 Ferramenta de alto nivel para responder perguntas analiticas em portugues.
 
@@ -50,9 +70,10 @@ Saida:
 - `suggested_followups`
 - `query_result`
 
-### `generate_marketing_report`
+### `generate_royalty_report`
 
-Gera relatorio executivo em PDF a partir de uma pergunta ou de um resultado estruturado.
+Gera relatorio executivo em PDF a partir de uma pergunta ou de um resultado
+estruturado (ex.: extrato de royalties por artista/periodo).
 
 Entradas:
 

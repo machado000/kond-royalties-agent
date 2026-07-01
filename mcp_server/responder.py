@@ -1,4 +1,4 @@
-"""Sintese executiva de respostas de marketing."""
+"""Sintese executiva de respostas de performance de royalties."""
 
 from __future__ import annotations
 
@@ -7,9 +7,9 @@ from typing import Any
 
 import requests
 
-from mcp_server.models import MarketingAnswer, MarketingQueryRequest, MarketingQueryResult, PlannedQuery
+from mcp_server.models import PlannedQuery, RoyaltyAnswer, RoyaltyQueryRequest, RoyaltyQueryResult
 from mcp_server.prompt_loader import load_system_prompt
-from mcp_server.query_runner import run_marketing_query
+from mcp_server.query_runner import run_royalty_query
 from mcp_server.settings import load_app_settings
 
 
@@ -24,14 +24,14 @@ def _format_number(value: Any) -> str:
 
 
 def suggest_visual(plan: PlannedQuery) -> str:
-    if "date" in plan.dimensions:
+    if "period" in plan.dimensions:
         return "linha temporal"
-    if "campaign" in plan.dimensions:
-        return "barras horizontais por campanha"
-    if "channel" in plan.dimensions:
-        return "barras por canal"
-    if "platform" in plan.dimensions:
-        return "barras por plataforma"
+    if "artist" in plan.dimensions:
+        return "barras por artista"
+    if "origem" in plan.dimensions:
+        return "barras por origem"
+    if "revenue_type" in plan.dimensions:
+        return "barras por tipo de receita"
     return "tabela resumida"
 
 
@@ -48,7 +48,7 @@ def _top_rows(rows: list[dict[str, Any]], metric: str, limit: int = 3) -> list[d
     return sorted(rows, key=sort_key, reverse=True)[:limit]
 
 
-def _prepare_llm_rows(plan: PlannedQuery, result: MarketingQueryResult) -> list[dict[str, Any]]:
+def _prepare_llm_rows(plan: PlannedQuery, result: RoyaltyQueryResult) -> list[dict[str, Any]]:
     primary_metric = plan.metrics[0] if plan.metrics else "revenue"
     ranked_rows = _top_rows(result.rows, primary_metric, limit=20)
     meaningful_rows = [
@@ -59,7 +59,7 @@ def _prepare_llm_rows(plan: PlannedQuery, result: MarketingQueryResult) -> list[
     return meaningful_rows[:10] or ranked_rows[:10]
 
 
-def _metric_totals(plan: PlannedQuery, result: MarketingQueryResult) -> dict[str, float]:
+def _metric_totals(plan: PlannedQuery, result: RoyaltyQueryResult) -> dict[str, float]:
     totals: dict[str, float] = {}
     for metric in plan.metrics:
         total = 0.0
@@ -71,7 +71,7 @@ def _metric_totals(plan: PlannedQuery, result: MarketingQueryResult) -> dict[str
     return totals
 
 
-def build_fallback_answer(plan: PlannedQuery, result: MarketingQueryResult) -> MarketingAnswer:
+def build_fallback_answer(plan: PlannedQuery, result: RoyaltyQueryResult) -> RoyaltyAnswer:
     primary_metric = plan.metrics[0] if plan.metrics else "revenue"
     top_rows = _top_rows(result.rows, primary_metric)
 
@@ -103,11 +103,11 @@ def build_fallback_answer(plan: PlannedQuery, result: MarketingQueryResult) -> M
         summary = f"{top_label} lidera em {primary_metric} com {top_value}."
 
     followups = [
-        "Abrir a analise por campanha.",
+        "Abrir a analise por origem ou tipo de receita.",
         "Comparar com o periodo anterior.",
         "Gerar relatorio executivo em PDF.",
     ]
-    return MarketingAnswer(
+    return RoyaltyAnswer(
         answer_markdown=answer_markdown,
         summary=summary,
         suggested_visual=suggest_visual(plan),
@@ -131,7 +131,7 @@ def _extract_response_text(payload: dict[str, Any]) -> str:
     return "\n".join(chunks).strip()
 
 
-def generate_openai_answer(plan: PlannedQuery, result: MarketingQueryResult) -> MarketingAnswer:
+def generate_openai_answer(plan: PlannedQuery, result: RoyaltyQueryResult) -> RoyaltyAnswer:
     settings = load_app_settings()
     if not settings.openai_api_key:
         raise ValueError("OPENAI_API_KEY nao configurada.")
@@ -171,7 +171,7 @@ def generate_openai_answer(plan: PlannedQuery, result: MarketingQueryResult) -> 
     text = _extract_response_text(payload)
     data = json.loads(text)
 
-    return MarketingAnswer(
+    return RoyaltyAnswer(
         answer_markdown=data["answer_markdown"],
         summary=data["summary"],
         suggested_visual=data.get("suggested_visual"),
@@ -181,8 +181,8 @@ def generate_openai_answer(plan: PlannedQuery, result: MarketingQueryResult) -> 
     )
 
 
-def ask_marketing(request: MarketingQueryRequest) -> tuple[PlannedQuery, MarketingAnswer]:
-    plan, result = run_marketing_query(request)
+def ask_royalties(request: RoyaltyQueryRequest) -> tuple[PlannedQuery, RoyaltyAnswer]:
+    plan, result = run_royalty_query(request)
     try:
         answer = generate_openai_answer(plan, result)
     except Exception:

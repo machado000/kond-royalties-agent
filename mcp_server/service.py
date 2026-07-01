@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from mcp_server.bigquery import list_accessible_datasets
 from mcp_server.catalog import build_catalog_payload
-from mcp_server.models import MarketingQueryRequest
-from mcp_server.planner import plan_marketing_query
-from mcp_server.query_runner import run_marketing_query
-from mcp_server.responder import ask_marketing
-from mcp_server.settings import load_app_settings, load_bigquery_source_config
+from mcp_server.models import RoyaltyQueryRequest
+from mcp_server.planner import plan_royalty_query
+from mcp_server.postgres import describe_schema, list_accessible_schemas
+from mcp_server.query_runner import run_royalty_query
+from mcp_server.responder import ask_royalties
+from mcp_server.settings import load_app_settings, load_postgres_source_config
 
 
 def get_catalog_payload() -> dict[str, object]:
@@ -17,50 +17,68 @@ def get_catalog_payload() -> dict[str, object]:
 
 def get_config_payload() -> dict[str, object]:
     settings = load_app_settings()
-    source_config = load_bigquery_source_config()
+    source_config = load_postgres_source_config()
     return {
         "env": {
             **settings.model_dump(),
             "openai_api_key": "***redacted***" if settings.openai_api_key else None,
+            "database_url": "***redacted***" if settings.database_url else None,
+            "pg_password": "***redacted***" if settings.pg_password else None,
         },
         "sources": source_config.model_dump(),
     }
 
 
-def get_bigquery_diagnostics_payload() -> tuple[int, dict[str, object]]:
+def get_postgres_diagnostics_payload() -> tuple[int, dict[str, object]]:
     settings = load_app_settings()
-    source_config = load_bigquery_source_config()
-    enabled = settings.bigquery_datasets or source_config.datasets
+    source_config = load_postgres_source_config()
+    enabled = settings.postgres_schemas or source_config.schemas
 
     try:
-        datasets = list_accessible_datasets(settings)
+        schemas = list_accessible_schemas(settings)
     except Exception as exc:
         return 1, {
-            "project_id": settings.bigquery_project_id or source_config.project_id,
-            "enabled_datasets": enabled,
+            "enabled_schemas": enabled,
             "status": "error",
             "error": str(exc),
         }
 
     return 0, {
-        "project_id": settings.bigquery_project_id or source_config.project_id,
-        "enabled_datasets": enabled,
-        "accessible_datasets": datasets,
-        "missing_enabled_datasets": [dataset for dataset in enabled if dataset not in datasets],
+        "enabled_schemas": enabled,
+        "accessible_schemas": schemas,
+        "missing_enabled_schemas": [schema for schema in enabled if schema not in schemas],
         "status": "ok",
     }
 
 
+def get_schema_payload(schema: str | None) -> tuple[int, dict[str, object]]:
+    settings = load_app_settings()
+    try:
+        tables = describe_schema(settings, schema=schema)
+    except Exception as exc:
+        return 1, {
+            "status": "error",
+            "schema": schema,
+            "error": str(exc),
+        }
+
+    return 0, {
+        "status": "ok",
+        "schema": schema,
+        "tables": tables,
+    }
+
+
 def get_plan_payload(question: str, limit: int) -> dict[str, object]:
-    request = MarketingQueryRequest(question=question, limit=limit)
-    plan = plan_marketing_query(request)
+    request = RoyaltyQueryRequest(question=question, limit=limit)
+    plan = plan_royalty_query(request)
     return plan.model_dump()
 
 
 def get_run_query_payload(question: str, limit: int) -> tuple[int, dict[str, object]]:
-    request = MarketingQueryRequest(question=question, limit=limit)
+    request = RoyaltyQueryRequest(question=question, limit=limit)
     try:
-        plan, result = run_marketing_query(request)
+        plan, result = run_royalty_query(request)
     except Exception as exc:
         return 1, {
             "status": "error",
@@ -76,9 +94,9 @@ def get_run_query_payload(question: str, limit: int) -> tuple[int, dict[str, obj
 
 
 def get_ask_payload(question: str, limit: int) -> tuple[int, dict[str, object]]:
-    request = MarketingQueryRequest(question=question, limit=limit)
+    request = RoyaltyQueryRequest(question=question, limit=limit)
     try:
-        plan, answer = ask_marketing(request)
+        plan, answer = ask_royalties(request)
     except Exception as exc:
         return 1, {
             "status": "error",

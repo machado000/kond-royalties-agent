@@ -12,7 +12,7 @@ class DateRange(BaseModel):
     end_date: str | None = None
 
 
-class MarketingQueryRequest(BaseModel):
+class RoyaltyQueryRequest(BaseModel):
     question: str
     metrics: list[str] = Field(default_factory=list)
     dimensions: list[str] = Field(default_factory=list)
@@ -21,7 +21,7 @@ class MarketingQueryRequest(BaseModel):
     limit: int = 100
 
 
-class MarketingQueryResult(BaseModel):
+class RoyaltyQueryResult(BaseModel):
     sql: str
     rows: list[dict[str, Any]] = Field(default_factory=list)
     row_count: int = 0
@@ -34,7 +34,6 @@ class PlannedQuery(BaseModel):
     dimensions: list[str] = Field(default_factory=list)
     date_range: DateRange | None = None
     filters: dict[str, Any] = Field(default_factory=dict)
-    source_datasets: list[str] = Field(default_factory=list)
     limit: int = 100
     notes: list[str] = Field(default_factory=list)
 
@@ -46,10 +45,10 @@ class VisualSuggestion(BaseModel):
     title: str | None = None
 
 
-class MarketingAnswer(BaseModel):
+class RoyaltyAnswer(BaseModel):
     answer_markdown: str
     summary: str
     suggested_visual: str | VisualSuggestion | None = None
     suggested_followups: list[str] = Field(default_factory=list)
     generation_mode: str = "fallback"
-    query_result: MarketingQueryResult | None = None
+    query_result: RoyaltyQueryResult | None = None

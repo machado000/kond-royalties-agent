@@ -1,4 +1,4 @@
-"""Planejamento semantico inicial para perguntas de marketing."""
+"""Planejamento semantico inicial para perguntas de performance de royalties."""
 
 from __future__ import annotations
 
@@ -6,48 +6,41 @@ import re
 import unicodedata
 from datetime import date, timedelta
 
-from mcp_server.models import DateRange, MarketingQueryRequest, PlannedQuery
+from mcp_server.models import DateRange, PlannedQuery, RoyaltyQueryRequest
 
 
-DEFAULT_METRICS = ["revenue", "spend", "roas"]
-DEFAULT_DIMENSION = ["channel"]
+DEFAULT_METRICS = ["quantity", "revenue"]
+DEFAULT_DIMENSION = ["artist"]
 
 METRIC_KEYWORDS = {
-    "revenue": ["receita", "faturamento", "revenue", "gmv", "vendas"],
-    "spend": ["investimento", "gasto", "spend", "custo", "midia"],
-    "roas": ["roas", "retorno"],
-    "conversions": ["conversoes", "conversão", "conversion", "conversions", "pedidos", "orders"],
-    "sessions": ["sessoes", "sessões", "sessions", "trafego", "tráfego"],
+    "quantity": ["quantidade", "streams", "unidades", "shows", "quantity"],
+    "revenue": ["receita", "royalties", "repasse", "faturamento", "revenue"],
 }
 
 DIMENSION_KEYWORDS = {
-    "channel": ["canal", "channel", "origem"],
-    "platform": ["plataforma", "platform", "fonte", "midia"],
-    "campaign": ["campanha", "campaign"],
-    "date": ["por dia", "por data", "date", "diario", "diaria", "daily"],
+    "artist": ["artista", "artist"],
+    "origem": ["origem", "distribuidora", "sistema de origem"],
+    "revenue_type": ["tipo de receita", "categoria de receita", "revenue type"],
+    "period": ["periodo", "por mes", "por data", "mensal"],
 }
 
-KNOWN_DATASETS = [
-    "analytics_253977277",
-    "ga4_bronze",
-    "ga4_silver",
-    "google_ads",
-    "facebook_ads_bronze",
-    "facebook_ads_silver",
-]
-
+# Valores gravados na coluna `origem` (ver config/column_dictionary.yml).
+# 'Warner Chappel' e a grafia real no banco (uma letra 'l'), diferente do
+# nome do schema Postgres `warner_chappell` (duas letras 'l').
 FILTER_KEYWORDS = {
-    "platform": {
-        "google_ads": ["google ads", "google", "adwords"],
-        "facebook_ads": ["facebook ads", "meta ads", "facebook", "meta", "instagram"],
-        "ga4": ["ga4", "analytics", "google analytics"],
+    "origem": {
+        "DSU": ["dsu"],
+        "Omie": ["omie"],
+        "Orchard": ["orchard"],
+        "Universal": ["universal"],
+        "Warner Chappel": ["warner chappell", "warner chappel"],
+        "Warner Music": ["warner music"],
     },
-    "channel": {
-        "paid_search": ["paid search", "busca paga", "pesquisa paga"],
-        "paid_social": ["paid social", "social pago", "social paga"],
-        "organic_search": ["organic", "organico", "orgânico"],
-        "email": ["email", "newsletter"],
-        "direct": ["direct", "direto"],
+    "revenue_type": {
+        "Editora": ["editora", "publishing"],
+        "Gravadora": ["gravadora", "master"],
+        "Publicidade": ["publicidade", "advertising"],
+        "Shows": ["shows", "show ao vivo"],
     },
 }
 
@@ -71,23 +64,13 @@ def infer_dimensions(question: str) -> list[str]:
     return dimensions or DEFAULT_DIMENSION.copy()
 
 
-def _mask_dataset_names(text: str, datasets: list[str]) -> str:
-    masked = text
-    for ds in datasets:
-        masked = masked.replace(ds, " ")
-        masked = masked.replace(ds.replace("_", " "), " ")
-    return masked
-
-
 def infer_filters(question: str) -> dict[str, str]:
     normalized = _normalize(question)
-    detected_datasets = infer_source_datasets(question)
-    masked = _mask_dataset_names(normalized, detected_datasets)
 
     filters: dict[str, str] = {}
     for field, mapping in FILTER_KEYWORDS.items():
         for value, keywords in mapping.items():
-            if any(keyword in masked for keyword in keywords):
+            if any(_normalize(keyword) in normalized for keyword in keywords):
                 filters[field] = value
                 break
     return filters
@@ -120,24 +103,18 @@ def infer_date_range(question: str, today: date | None = None) -> DateRange | No
         start = reference - timedelta(days=6)
         return DateRange(start_date=start.isoformat(), end_date=reference.isoformat())
 
-    if "ultimo mes" in normalized or "último mês" in question.lower() or "last month" in normalized:
+    if "ultimo mes" in normalized or "last month" in normalized:
         start = reference - timedelta(days=29)
         return DateRange(start_date=start.isoformat(), end_date=reference.isoformat())
 
     return None
 
 
-def infer_source_datasets(question: str) -> list[str]:
-    normalized = _normalize(question)
-    return [ds for ds in KNOWN_DATASETS if ds in normalized]
-
-
-def plan_marketing_query(request: MarketingQueryRequest, today: date | None = None) -> PlannedQuery:
+def plan_royalty_query(request: RoyaltyQueryRequest, today: date | None = None) -> PlannedQuery:
     metrics = request.metrics or infer_metrics(request.question)
     dimensions = request.dimensions or infer_dimensions(request.question)
     date_range = request.date_range or infer_date_range(request.question, today=today)
     filters = {**infer_filters(request.question), **request.filters}
-    source_datasets = infer_source_datasets(request.question)
 
     notes: list[str] = []
     if not request.metrics:
@@ -146,10 +123,8 @@ def plan_marketing_query(request: MarketingQueryRequest, today: date | None = No
         notes.append("Dimensoes inferidas a partir da pergunta.")
     if date_range is None:
         notes.append("Sem intervalo explicito; a consulta usara todo o historico disponivel.")
-    if source_datasets:
-        notes.append(f"Datasets explícitos: {', '.join(source_datasets)}.")
-    else:
-        notes.append("Usando camada semântica padrão (todas as fontes).")
+    if date_range is not None:
+        notes.append("Dados armazenados em grao mensal (period); o intervalo de datas e truncado para o mes.")
 
     return PlannedQuery(
         question=request.question,
@@ -157,7 +132,6 @@ def plan_marketing_query(request: MarketingQueryRequest, today: date | None = No
         dimensions=dimensions,
         date_range=date_range,
         filters=filters,
-        source_datasets=source_datasets,
         limit=request.limit,
         notes=notes,
     )

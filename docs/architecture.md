@@ -1,6 +1,6 @@
 # Arquitetura
 
-## Visão geral
+## Visao geral
 
 ```text
 Agente customizado
@@ -9,42 +9,54 @@ Agente customizado
    Servidor MCP
         |
         v
- BigQuery + catálogo semântico + relatórios
+ Postgres (raw/silver/marts) + catalogo semantico + relatorios
 ```
 
 ## Componentes
 
 ### Agente
 
-- interpreta perguntas
+- interpreta perguntas sobre performance de royalties de artistas
 - decide qual ferramenta MCP usar
 - resume resultados
-- propõe próximos passos
+- propoe proximos passos
 
 ### MCP
 
 - valida entradas
-- aplica regras semânticas
-- consulta o BigQuery
+- aplica regras semanticas
+- consulta o Postgres (uma conexao, varios schemas via `search_path`)
+- introspecta o schema real via `information_schema` quando necessario
 - retorna payloads estruturados
 
-### Catálogo semântico
+### Catalogo semantico
 
-- métricas oficiais
-- dimensões aceitas
-- fontes aprovadas
-- regras de negócio
+- metricas oficiais (streams, unidades, receita, royalties)
+- dimensoes aceitas (data, artista, faixa, album, plataforma/DSP, territorio)
+- fonte aprovada (tabela/view de analise em `marts`)
+- regras de negocio
 
-### Relatórios
+### Relatorios
 
 - tabelas
-- gráficos
+- graficos
 - PDF final
 
 ## Fora de escopo da V1
 
-- DuckDB
-- sync diário local
+- SQL livre pelo usuario
 - frontend web dedicado
-- SQL livre pelo usuário
+- ETL proprio dentro deste repositorio (assume-se que os schemas
+  `raw`/`silver`/`marts` ja sao alimentados por um pipeline externo)
 
+## Nota sobre o schema real
+
+O schema de royalties foi validado em 2026-07-01 contra o banco de producao
+(`describe-schema` + consultas de amostragem). O agente consulta
+`public.vw_ft_dados_analiticos_union`, uma view que unifica as fact tables
+de todas as origens/distribuidoras (DSU, Omie, Orchard, Universal, Warner
+Chappel, Warner Music) no grao artista + periodo (mes) + origem + tipo de
+receita. Ver `config/postgres_sources.yml` e `config/column_dictionary.yml`
+para o detalhe completo, incluindo notas de qualidade de dados (ex.: grao
+mensal, nao diario; `origem='Warner Chappel'` com grafia divergente do
+nome do schema). Pendencias de investigacao em [TODO.md](../TODO.md).

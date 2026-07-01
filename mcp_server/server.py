@@ -1,4 +1,4 @@
-"""Entrypoint inicial do servidor MCP."""
+"""Entrypoint do servidor MCP."""
 
 from __future__ import annotations
 
@@ -8,11 +8,12 @@ import json
 from mcp_server.mcp_stdio import serve_stdio
 from mcp_server.service import (
     get_ask_payload,
-    get_bigquery_diagnostics_payload,
     get_catalog_payload,
     get_config_payload,
     get_plan_payload,
+    get_postgres_diagnostics_payload,
     get_run_query_payload,
+    get_schema_payload,
 )
 
 
@@ -22,16 +23,20 @@ def _emit(payload: dict[str, object]) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="mistral-agent-mcp")
+    parser = argparse.ArgumentParser(prog="kond-royalties-mcp")
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("catalog", help="Exibe o catalogo semantico.")
     subparsers.add_parser("config", help="Exibe configuracoes efetivas.")
-    subparsers.add_parser("diagnose-bigquery", help="Valida acesso e datasets do BigQuery.")
+    subparsers.add_parser("diagnose-postgres", help="Valida acesso e schemas do Postgres.")
+    schema_parser = subparsers.add_parser(
+        "describe-schema", help="Introspecta tabelas e colunas reais via information_schema."
+    )
+    schema_parser.add_argument("--schema", default=None, help="Schema especifico. Se omitido, usa todos os habilitados.")
     subparsers.add_parser("serve-mcp", help="Inicia o servidor MCP por stdio.")
     plan_parser = subparsers.add_parser("plan-query", help="Planeja uma consulta sem executa-la.")
     plan_parser.add_argument("--question", required=True)
     plan_parser.add_argument("--limit", type=int, default=100)
-    run_parser = subparsers.add_parser("run-query", help="Executa uma consulta de marketing no BigQuery.")
+    run_parser = subparsers.add_parser("run-query", help="Executa uma consulta de royalties no Postgres.")
     run_parser.add_argument("--question", required=True)
     run_parser.add_argument("--limit", type=int, default=100)
     ask_parser = subparsers.add_parser("ask", help="Executa a consulta e devolve resposta executiva.")
@@ -48,8 +53,12 @@ def main() -> None:
         raise SystemExit(_emit(get_catalog_payload()))
     if args.command == "config":
         raise SystemExit(_emit(get_config_payload()))
-    if args.command == "diagnose-bigquery":
-        status_code, payload = get_bigquery_diagnostics_payload()
+    if args.command == "diagnose-postgres":
+        status_code, payload = get_postgres_diagnostics_payload()
+        _emit(payload)
+        raise SystemExit(status_code)
+    if args.command == "describe-schema":
+        status_code, payload = get_schema_payload(schema=args.schema)
         _emit(payload)
         raise SystemExit(status_code)
     if args.command == "serve-mcp":

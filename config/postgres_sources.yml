@@ -1,0 +1,50 @@
+# Configuracao de acesso ao Postgres do agente KOND.
+#
+# STATUS: VALIDADO contra o banco real em 2026-07-01 via
+# `kond-royalties-mcp describe-schema` (introspeccao de information_schema)
+# e consultas de amostragem diretas.
+
+# Uma unica conexao (DATABASE_URL ou PGHOST/PGPORT/PGDATABASE/PGUSER/
+# PGPASSWORD/PGSSLMODE) para varios schemas, selecionados via search_path --
+# ver mcp_server/settings.py e mcp_server/postgres.py.
+connection:
+  schemas:
+    - public            # view unificada entre labels/distribuidoras + dimensoes compartilhadas
+    - universal          # detalhe Universal Music (magmedia, musica, compositor)
+    - warner_chappell     # detalhe Warner Chappell (statements de publishing)
+
+# Tabela/view que o agente consulta hoje (mcp_server/query_builder.py).
+# `public.vw_ft_dados_analiticos_union` e uma view ja consolidada, unindo as
+# fact tables de todas as origens/distribuidoras (DSU, Omie, Orchard,
+# Universal, Warner Chappel, Warner Music) no grao artista + periodo (mes) +
+# origem + tipo de receita. 10.3M linhas observadas em 2026-07-01.
+query_source:
+  schema: public
+  table: vw_ft_dados_analiticos_union
+
+# Fontes logicas de referencia.
+logical_sources:
+  royalty_performance:
+    description: >
+      View unificada de performance de royalties/receita por artista,
+      periodo (mes), origem (sistema/distribuidora) e tipo de receita.
+      Cobre streaming/publishing/master (Orchard, Universal, Warner Chappel,
+      Warner Music), shows ao vivo (DSU) e financeiro/ERP (Omie).
+    schema: public
+    table: vw_ft_dados_analiticos_union
+
+  # Schemas de detalhe por label, ainda NAO consultados pelo agente (apenas
+  # documentados aqui para referencia futura). Uteis para analises mais
+  # profundas do que a view unificada permite (ex.: por musica/compositor).
+  universal_detail:
+    description: >
+      Tabelas de dimensao e staging da Universal Music (musica, compositor,
+      cliente, fonte/canal, tipo e grupo de renda) — schema `universal`.
+    schema: universal
+    table: stg_universal_magmedia
+  warner_chappell_detail:
+    description: >
+      Statement bruto/staging da Warner Chappell (publishing) — schema
+      `warner_chappell`.
+    schema: warner_chappell
+    table: ft_warner_statement

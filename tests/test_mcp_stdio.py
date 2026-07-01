@@ -19,13 +19,14 @@ def test_initialize_returns_tools_capability() -> None:
     assert response["result"]["capabilities"]["tools"]["listChanged"] is False
 
 
-def test_tools_list_returns_marketing_tools() -> None:
+def test_tools_list_returns_royalty_tools() -> None:
     response = handle_message({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}})
 
     assert response is not None
     tool_names = [tool["name"] for tool in response["result"]["tools"]]
-    assert "ask_marketing" in tool_names
-    assert "run_marketing_query" in tool_names
+    assert "ask_royalties" in tool_names
+    assert "run_royalty_query" in tool_names
+    assert "describe_schema" in tool_names
 
 
 def test_unknown_tool_returns_protocol_error() -> None:

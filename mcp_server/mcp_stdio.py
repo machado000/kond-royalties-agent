@@ -8,26 +8,27 @@ from typing import Any
 
 from mcp_server.service import (
     get_ask_payload,
-    get_bigquery_diagnostics_payload,
     get_catalog_payload,
     get_config_payload,
     get_plan_payload,
+    get_postgres_diagnostics_payload,
     get_run_query_payload,
+    get_schema_payload,
 )
 
 
 PROTOCOL_VERSION = "2025-06-18"
 SERVER_INFO = {
-    "name": "mistral-analytics-agent",
-    "title": "Mistral Analytics Agent",
+    "name": "kond-royalties-agent",
+    "title": "KOND Royalties Agent",
     "version": "0.1.0",
 }
 
 TOOLS = [
     {
-        "name": "get_marketing_catalog",
-        "title": "Marketing Catalog",
-        "description": "Retorna metricas, dimensoes e fontes aprovadas do catalogo semantico.",
+        "name": "get_royalty_catalog",
+        "title": "Royalty Catalog",
+        "description": "Retorna metricas, dimensoes e fontes aprovadas do catalogo semantico de royalties.",
         "inputSchema": {
             "type": "object",
             "properties": {},
@@ -37,7 +38,7 @@ TOOLS = [
     {
         "name": "get_runtime_config",
         "title": "Runtime Config",
-        "description": "Retorna a configuracao efetiva do agente, com segredo da OpenAI redigido.",
+        "description": "Retorna a configuracao efetiva do agente, com segredos redigidos.",
         "inputSchema": {
             "type": "object",
             "properties": {},
@@ -45,9 +46,9 @@ TOOLS = [
         },
     },
     {
-        "name": "diagnose_bigquery_access",
-        "title": "BigQuery Diagnostics",
-        "description": "Valida acesso ao BigQuery e datasets habilitados.",
+        "name": "diagnose_postgres_access",
+        "title": "Postgres Diagnostics",
+        "description": "Valida acesso ao Postgres e schemas habilitados.",
         "inputSchema": {
             "type": "object",
             "properties": {},
@@ -55,8 +56,23 @@ TOOLS = [
         },
     },
     {
-        "name": "plan_marketing_query",
-        "title": "Plan Marketing Query",
+        "name": "describe_schema",
+        "title": "Describe Schema",
+        "description": (
+            "Introspecta tabelas e colunas reais do Postgres via information_schema. "
+            "Use para descobrir o schema real do banco de royalties."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "schema": {"type": "string", "description": "Nome do schema. Se omitido, usa todos os schemas habilitados."},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "plan_royalty_query",
+        "title": "Plan Royalty Query",
         "description": "Converte uma pergunta em plano semantico controlado.",
         "inputSchema": {
             "type": "object",
@@ -69,9 +85,9 @@ TOOLS = [
         },
     },
     {
-        "name": "run_marketing_query",
-        "title": "Run Marketing Query",
-        "description": "Executa consulta controlada no BigQuery e retorna plano, SQL e linhas.",
+        "name": "run_royalty_query",
+        "title": "Run Royalty Query",
+        "description": "Executa consulta controlada no Postgres e retorna plano, SQL e linhas.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -83,8 +99,8 @@ TOOLS = [
         },
     },
     {
-        "name": "ask_marketing",
-        "title": "Ask Marketing",
+        "name": "ask_royalties",
+        "title": "Ask Royalties",
         "description": "Executa a consulta e devolve resposta executiva em portugues do Brasil.",
         "inputSchema": {
             "type": "object",
@@ -128,7 +144,7 @@ def _handle_initialize(message_id: Any) -> dict[str, Any]:
             },
             "serverInfo": SERVER_INFO,
             "instructions": (
-                "Use as tools semanticas para consultar marketing no BigQuery. "
+                "Use as tools semanticas para consultar performance de royalties no Postgres. "
                 "Respostas devem permanecer em portugues do Brasil."
             ),
         },
@@ -163,24 +179,27 @@ def _handle_tool_call(message_id: Any, params: dict[str, Any]) -> dict[str, Any]
         }
 
     try:
-        if tool_name == "get_marketing_catalog":
+        if tool_name == "get_royalty_catalog":
             payload = get_catalog_payload()
             result = _text_result(payload)
         elif tool_name == "get_runtime_config":
             payload = get_config_payload()
             result = _text_result(payload)
-        elif tool_name == "diagnose_bigquery_access":
-            _, payload = get_bigquery_diagnostics_payload()
+        elif tool_name == "diagnose_postgres_access":
+            _, payload = get_postgres_diagnostics_payload()
             result = _text_result(payload, is_error=payload.get("status") == "error")
-        elif tool_name == "plan_marketing_query":
+        elif tool_name == "describe_schema":
+            _, payload = get_schema_payload(schema=arguments.get("schema"))
+            result = _text_result(payload, is_error=payload.get("status") == "error")
+        elif tool_name == "plan_royalty_query":
             question = arguments["question"]
             payload = get_plan_payload(question=question, limit=_coerce_limit(arguments))
             result = _text_result(payload)
-        elif tool_name == "run_marketing_query":
+        elif tool_name == "run_royalty_query":
             question = arguments["question"]
             status_code, payload = get_run_query_payload(question=question, limit=_coerce_limit(arguments))
             result = _text_result(payload, is_error=status_code != 0)
-        elif tool_name == "ask_marketing":
+        elif tool_name == "ask_royalties":
             question = arguments["question"]
             status_code, payload = get_ask_payload(question=question, limit=_coerce_limit(arguments))
             result = _text_result(payload, is_error=status_code != 0)

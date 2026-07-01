@@ -2,22 +2,21 @@
 
 ## Pergunta
 
-Como receita, investimento e ROAS performaram por canal na última semana?
+Como foram streams, receita e royalties por plataforma na ultima semana?
 
-## Saída esperada
+## Saida esperada
 
 - resumo executivo
-- destaques por canal
+- destaques por plataforma (DSP)
 - gargalos ou anomalias
-- sugestão de visualização
+- sugestao de visualizacao
 
 ## Pergunta
 
-Gere um relatório em PDF com a performance semanal de mídia paga.
+Gere um relatorio em PDF com o extrato de royalties do artista X no ultimo mes.
 
-## Saída esperada
+## Saida esperada
 
-- chamada da ferramenta de relatório
+- chamada da ferramenta de relatorio
 - caminho do arquivo
-- breve resumo do conteúdo entregue
-
+- breve resumo do conteudo entregue

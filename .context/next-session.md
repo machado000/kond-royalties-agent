@@ -4,66 +4,69 @@
 
 Continuar no repositorio:
 
-- `/Users/joao/Documents/Codex/2026-06-25/mistral-analytics-agent`
+- `~/Projetos/KOND-analytics-agent`
 
-Nao continuar desenvolvendo no workspace antigo:
+## O que foi feito (sessao 2026-07-01)
 
-- `/Users/joao/Documents/Codex/2026-06-23/lets-discuss-architecture-tools-and-solutions`
+Refatoracao completa do agente de marketing analytics (BigQuery) para um
+agente de performance de royalties de artistas (Postgres), **e** validacao
+contra o banco real de producao:
 
-Este workspace antigo agora serve apenas como registro de conversa e handoff.
-
-## O que foi feito (sessao 2026-06-26)
-
-- Conector MCP agora distingue datasets GA4 (bronze, silver, raw) e impede combinacao
-- ETL bronze revisado: LEFT JOIN com sessionstart para preencher traffic_source/medium/campaign
-- Criada tabela `dim_session_traffic` como dimensao de sessao canonica
-- Criado script ETL incremental `bronze_dim_session_traffic.sql`
-- Criada tabela silver `ga4_ecommerce` para receita/conversoes agregadas
-- Backfill executado em ambos os projetos (prod e dev)
-- Teste de acuracia entre datasets: `pytest -m slow` (tests/test_dataset_accuracy.py)
-- Validado: 3 datasets retornam receita identica (R$ 301.784,38) canal a canal
-
-Pipeline ETL diario atualizado:
-1. `bronze_ga4_events_sessionstart`
-2. `bronze_dim_session_traffic` (MERGE incremental)
-3. `bronze_ga4_events_click` / `ecommerce` / `pageview` / `submit`
-4. `silver_ga4_general_traffic` / `ga4_clicks` / `ga4_pageviews` / `ga4_ecommerce`
+- `mcp_server/postgres.py` substitui `mcp_server/bigquery.py`: conexao via
+  `DATABASE_URL` OU variaveis `PGHOST`/`PGPORT`/`PGDATABASE`/`PGUSER`/
+  `PGPASSWORD`/`PGSSLMODE`, `search_path` a partir de `POSTGRES_SCHEMAS`, e
+  a tool `describe_schema` (introspeccao via `information_schema`)
+- credenciais reais adicionadas a `.env`; conexao, `describe-schema`,
+  `run-query` e `ask` (com sintese OpenAI real) validados de ponta a ponta
+- schema real descoberto: o agente consulta `public.vw_ft_dados_analiticos_union`
+  (10.3M linhas), unificando DSU/Omie/Orchard/Universal/Warner
+  Chappel/Warner Music por artista + periodo (mes) + origem + tipo de
+  receita — `config/postgres_sources.yml`, `config/column_dictionary.yml`
+  e `semantic_catalog/catalog.yml` foram reescritos para refletir isso
+  (nao sao mais provisorios)
+- corrigido bug real: `mcp_server/query_runner.py` nao convertia `Decimal`
+  (retornado pelo psycopg para colunas `numeric`) para `float`, o que
+  quebrava a serializacao JSON e fazia `ask` cair silenciosamente no
+  fallback determinístico em vez de usar a OpenAI
+- corrigido bug no `.env`: valores entre aspas (`PGDATABASE="..."`) nao
+  eram destrings pelo parser simples em `mcp_server/settings.py::_load_dotenv`
+- `planner.py` atualizado com os valores reais de `origem` (nota: o dado
+  grava `'Warner Chappel'`, uma letra 'l', diferente do nome do schema
+  `warner_chappell`) e `revenue_type` (Editora, Gravadora, Publicidade,
+  Shows)
+- pacote renomeado para `kond-royalties-agent`, entry point
+  `kond-royalties-mcp`
+- testes reescritos e passando (`pytest -q` → `13 passed`)
+- git inicializado localmente com um commit de snapshot do estado antigo
+  (BigQuery) antes da refatoracao
 
 ## Primeiro passo recomendado
 
-Implementar geracao de relatorio PDF.
+Trabalhar a lista de pendencias de qualidade de dados em `TODO.md`,
+principalmente:
 
-Motivo:
+1. Confirmar se `ft_somlivre_sonymusic` esta coberta por
+   `vw_ft_dados_analiticos_union` (nao apareceu na amostra de `origem`)
+2. Mapear o significado de `quantity` por `origem`/`revenue_type` (hoje so
+   confirmado para `origem='DSU'` + `revenue_type='Shows'` = contagem de
+   shows, nao streams)
+3. Decidir se `origem='Omie'` (ERP financeiro) deve continuar na mesma
+   view de "performance de royalties" por padrao
 
-- a consulta controlada ja funciona
-- a sintese executiva ja funciona
-- o maior gap funcional agora e transformar isso em artefato entregavel
+## Depois disso
 
-## Ordem recomendada
-
-1. criar `reporting/pdf_report.py`
-2. criar modelo de entrada para `generate_marketing_report`
-3. montar relatorio com:
-   - titulo
-   - resumo executivo
-   - periodo analisado
-   - metricas principais
-   - tabela top canais ou campanhas
-   - observacoes e proximos passos
-4. salvar PDF em pasta de artefatos do repositorio ativo
-5. adicionar comando CLI `generate-report`
-6. testar com a mesma pergunta ja validada
-
-## Depois do PDF
-
-1. converter CLI em tools MCP reais
-2. definir contrato de artefato visual alem da sugestao
-3. avaliar output schema mais estrito para a resposta OpenAI
+1. Avaliar enriquecimento via `public.dim_artistas` (gravadora, CPF, IDs
+   por plataforma) e os schemas de detalhe (`universal.dim_musica`,
+   `warner_chappell.ft_warner_statement`)
+2. Implementar geracao de relatorio PDF (`reporting/`)
+3. Ampliar vocabulario PT-BR do planner com termos reais do negocio
 
 ## Cuidados
 
-- nao expor segredos em logs
+- nao expor segredos em logs (`OPENAI_API_KEY`, `DATABASE_URL` e
+  `pg_password` sao redigidos em `get_config_payload`)
 - manter PT-BR em prompts e respostas
 - continuar sem SQL livre para usuario final
-- preservar o catalogo semantico como fonte de verdade
-
+- `origem='Warner Chappel'` (uma letra 'l') e o valor real do dado — nao
+  "corrigir" silenciosamente para 'Warner Chappell' sem confirmar com o
+  time se a fonte upstream deveria ser corrigida

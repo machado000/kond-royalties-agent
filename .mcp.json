@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "mistral_analytics": {
+    "kond_royalties": {
       "command": ".venv/bin/python",
       "args": ["-m", "mcp_server.server", "serve-mcp"]
     }
