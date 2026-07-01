@@ -109,6 +109,42 @@ template em [`docs/codex-mcp-config.example.toml`](docs/codex-mcp-config.example
 para o seu `~/.codex/config.toml`, ajustando o caminho absoluto do seu
 clone local.
 
+**Google Antigravity**
+
+Antigravity le configuracao de MCP do arquivo global
+`~/.gemini/config/mcp_config.json` (formato `mcpServers`, com `cwd`
+suportado). Template em
+[`docs/antigravity-mcp-config.example.json`](docs/antigravity-mcp-config.example.json).
+Em vez de editar o JSON a mao, rode (com o venv ja criado):
+
+```bash
+python scripts/install_mcp_config.py --client antigravity
+```
+
+O script faz merge da entrada `kond_royalties` na configuracao existente
+(sem apagar outros servidores ja configurados) usando o caminho absoluto
+deste clone e do seu `.venv`. Depois, na IDE, va em **Manage MCP Servers**
+e clique em **refresh** (ou reinicie a Antigravity).
+
+**Claude Desktop**
+
+O Claude Desktop le configuracao de MCP do arquivo global
+`~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) —
+formato `mcpServers`, sem suporte a `cwd`. Template em
+[`docs/claude-desktop-mcp-config.example.json`](docs/claude-desktop-mcp-config.example.json).
+Mesmo instalador:
+
+```bash
+python scripts/install_mcp_config.py --client claude-desktop
+```
+
+Depois, **feche completamente** o Claude Desktop (Cmd+Q, nao so a janela)
+e reabra — diferente da Antigravity, ele so recarrega a configuracao de
+MCP na inicializacao.
+
+> Use `--dry-run` em qualquer um dos dois comandos acima para ver o
+> resultado sem escrever o arquivo.
+
 ### Distribuicao
 
 Para instalar a partir do GitHub sem clonar manualmente:
