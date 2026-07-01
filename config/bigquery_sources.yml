@@ -1,0 +1,61 @@
+project_id: mistral-analytics
+
+# Arquitetura multi-projeto:
+# Os dados sao coletados por pipelines agendados nos projetos de origem abaixo.
+# O service account do agente MCP nao tem permissao nesses projetos — todas as
+# tabelas sao copiadas para `mistral-analytics`, onde rodam os testes, validacoes
+# e as consultas do agente.
+source_projects:
+  ga4: g-analytics-487213          # fetch GA4 raw + ETL bronze/silver agendados (scheduled queries)
+  facebook_ads: facebook-ads-487216
+  google_ads: gads-487211
+
+datasets:
+  - analytics_253977277
+  - ga4_bronze
+  - ga4_silver
+  - google_ads
+  - facebook_ads_bronze
+  - facebook_ads_silver
+
+# Tabelas usadas hoje pelo agente MCP (mcp_server/query_builder.py).
+# Para o inventario completo de tabelas por dataset (incluindo as ainda nao
+# integradas) ver config/column_dictionary.yml -> tables.
+tables_in_use:
+  ga4_silver:
+    - ga4_general_traffic   # sessoes/usuarios
+    - ga4_ecommerce         # receita/conversoes
+  ga4_bronze:
+    - ga4_events_ecommerce
+    - ga4_dim_session_traffic  # dimensao de sessao, usada via LEFT JOIN
+  analytics_253977277:
+    - events_*
+  google_ads:
+    - p_ads_ad_group_ad_8784814486
+  facebook_ads_silver:
+    - fb_ad_insights
+
+# Fontes logicas e suas tabelas. GA4 datasets sao mutuamente exclusivos —
+# "default" e a fonte usada quando o usuario nao especifica explicitamente;
+# "alternatives" lista as outras opcoes validas, mas NUNCA combinadas com o
+# default na mesma consulta (ver config/column_dictionary.yml e
+# semantic_catalog/catalog.yml para a regra completa).
+logical_sources:
+  ga4_events:
+    description: Eventos e agregados do GA4 para analise de funil, sessoes e receita.
+    default: ga4_silver
+    alternatives:
+      - ga4_bronze
+      - analytics_253977277
+    mutually_exclusive: true
+  google_ads_performance:
+    description: Performance de campanhas, grupos e anuncios do Google Ads.
+    default: google_ads
+    alternatives: []
+    mutually_exclusive: false
+  facebook_ads_performance:
+    description: Performance de campanhas e conjuntos do Meta Ads.
+    default: facebook_ads_silver
+    alternatives:
+      - facebook_ads_bronze
+    mutually_exclusive: false

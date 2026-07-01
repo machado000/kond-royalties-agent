@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "mistral_analytics": {
+      "command": ".venv/bin/python",
+      "args": ["-m", "mcp_server.server", "serve-mcp"]
+    }
+  }
+}
