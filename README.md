@@ -40,7 +40,7 @@ Responder perguntas de performance de royalties de artistas com:
 Validado em 2026-07-01 contra o Postgres de producao. O agente consulta
 `public.vw_ft_dados_analiticos_union`, uma view que unifica a performance de
 royalties/receita de todas as origens/distribuidoras (DSU, Omie, Orchard,
-Universal, Warner Chappel, Warner Music) por artista e periodo (mes). Ver
+Universal, Warner Chappell, Warner Music) por artista e periodo (mes). Ver
 `config/postgres_sources.yml` e `config/column_dictionary.yml` para o
 detalhe completo (incluindo notas de qualidade de dados) e `TODO.md` para
 pendencias de investigacao (ex.: significado de `quantity` por

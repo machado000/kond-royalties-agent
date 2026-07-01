@@ -55,8 +55,7 @@ O schema de royalties foi validado em 2026-07-01 contra o banco de producao
 (`describe-schema` + consultas de amostragem). O agente consulta
 `public.vw_ft_dados_analiticos_union`, uma view que unifica as fact tables
 de todas as origens/distribuidoras (DSU, Omie, Orchard, Universal, Warner
-Chappel, Warner Music) no grao artista + periodo (mes) + origem + tipo de
+Chappell, Warner Music) no grao artista + periodo (mes) + origem + tipo de
 receita. Ver `config/postgres_sources.yml` e `config/column_dictionary.yml`
 para o detalhe completo, incluindo notas de qualidade de dados (ex.: grao
-mensal, nao diario; `origem='Warner Chappel'` com grafia divergente do
-nome do schema). Pendencias de investigacao em [TODO.md](../TODO.md).
+mensal, nao diario). Pendencias de investigacao em [TODO.md](../TODO.md).

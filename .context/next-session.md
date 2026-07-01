@@ -4,13 +4,15 @@
 
 Continuar no repositorio:
 
-- `~/Projetos/KOND-analytics-agent`
+- local: `~/Projetos/KOND-analytics-agent`
+- remoto: [machado000/kond-royalties-agent](https://github.com/machado000/kond-royalties-agent) (privado, branch `main`)
 
 ## O que foi feito (sessao 2026-07-01)
 
 Refatoracao completa do agente de marketing analytics (BigQuery) para um
-agente de performance de royalties de artistas (Postgres), **e** validacao
-contra o banco real de producao:
+agente de performance de royalties de artistas (Postgres), validacao
+contra o banco real de producao, testes de "chat" (simulando o fluxo
+`ask_royalties` via CLI) e push para um repositorio GitHub privado:
 
 - `mcp_server/postgres.py` substitui `mcp_server/bigquery.py`: conexao via
   `DATABASE_URL` OU variaveis `PGHOST`/`PGPORT`/`PGDATABASE`/`PGUSER`/
@@ -20,7 +22,7 @@ contra o banco real de producao:
   `run-query` e `ask` (com sintese OpenAI real) validados de ponta a ponta
 - schema real descoberto: o agente consulta `public.vw_ft_dados_analiticos_union`
   (10.3M linhas), unificando DSU/Omie/Orchard/Universal/Warner
-  Chappel/Warner Music por artista + periodo (mes) + origem + tipo de
+  Chappell/Warner Music por artista + periodo (mes) + origem + tipo de
   receita — `config/postgres_sources.yml`, `config/column_dictionary.yml`
   e `semantic_catalog/catalog.yml` foram reescritos para refletir isso
   (nao sao mais provisorios)
@@ -28,17 +30,24 @@ contra o banco real de producao:
   (retornado pelo psycopg para colunas `numeric`) para `float`, o que
   quebrava a serializacao JSON e fazia `ask` cair silenciosamente no
   fallback determinístico em vez de usar a OpenAI
+- corrigido bug real: `RoyaltyAnswer.suggested_visual` exigia validacao
+  estrita contra `VisualSuggestion`; quando a OpenAI retornava um formato
+  diferente (ex.: `y_axis` como string em vez de lista), a resposta
+  quebrava com `ValidationError` e caia no fallback — agora aceita
+  `str | dict | VisualSuggestion`
 - corrigido bug no `.env`: valores entre aspas (`PGDATABASE="..."`) nao
   eram destrings pelo parser simples em `mcp_server/settings.py::_load_dotenv`
-- `planner.py` atualizado com os valores reais de `origem` (nota: o dado
-  grava `'Warner Chappel'`, uma letra 'l', diferente do nome do schema
-  `warner_chappell`) e `revenue_type` (Editora, Gravadora, Publicidade,
-  Shows)
+- corrigida uma afirmacao incorreta registrada na primeira sessao de
+  introspeccao: o valor real da coluna `origem` e `'Warner Chappell'`
+  (duas letras 'l'), nao `'Warner Chappel'` — o planner, o dicionario e
+  os docs foram corrigidos
+- `planner.py` atualizado com os valores reais de `origem` e `revenue_type`
+  (Editora, Gravadora, Publicidade, Shows)
 - pacote renomeado para `kond-royalties-agent`, entry point
   `kond-royalties-mcp`
-- testes reescritos e passando (`pytest -q` → `13 passed`)
-- git inicializado localmente com um commit de snapshot do estado antigo
-  (BigQuery) antes da refatoracao
+- testes reescritos e passando (`pytest -q` → `14 passed`)
+- git inicializado localmente, dois commits (snapshot BigQuery + refatoracao),
+  push para `github.com/machado000/kond-royalties-agent` (privado)
 
 ## Primeiro passo recomendado
 
@@ -60,6 +69,8 @@ principalmente:
    `warner_chappell.ft_warner_statement`)
 2. Implementar geracao de relatorio PDF (`reporting/`)
 3. Ampliar vocabulario PT-BR do planner com termos reais do negocio
+4. `infer_date_range` nao reconhece "ultimo ano"/"last year" (cai em
+   "sem intervalo explicito")
 
 ## Cuidados
 
@@ -67,6 +78,9 @@ principalmente:
   `pg_password` sao redigidos em `get_config_payload`)
 - manter PT-BR em prompts e respostas
 - continuar sem SQL livre para usuario final
-- `origem='Warner Chappel'` (uma letra 'l') e o valor real do dado — nao
-  "corrigir" silenciosamente para 'Warner Chappell' sem confirmar com o
-  time se a fonte upstream deveria ser corrigida
+- `.env` e `secrets/gcp-service-account.json` sao gitignored — confirmar
+  antes de qualquer push que nao foram adicionados por engano
+- ao registrar valores distintos de uma coluna a partir de uma amostra,
+  conferir com `length()`/`repr()` antes de documentar como fato (ver
+  correcao do `origem='Warner Chappell'` acima — a primeira leitura estava
+  errada)

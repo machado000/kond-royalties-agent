@@ -73,7 +73,7 @@ Comandos implementados:
 
 O agente consulta `public.vw_ft_dados_analiticos_union` (10.3M linhas): uma
 view que unifica as fact tables de todas as origens/distribuidoras (DSU,
-Omie, Orchard, Universal, Warner Chappel, Warner Music) no grao artista +
+Omie, Orchard, Universal, Warner Chappell, Warner Music) no grao artista +
 periodo (mes) + origem + tipo de receita. Detalhes e notas de qualidade em
 `config/column_dictionary.yml`.
 

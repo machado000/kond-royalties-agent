@@ -16,7 +16,7 @@ connection:
 # Tabela/view que o agente consulta hoje (mcp_server/query_builder.py).
 # `public.vw_ft_dados_analiticos_union` e uma view ja consolidada, unindo as
 # fact tables de todas as origens/distribuidoras (DSU, Omie, Orchard,
-# Universal, Warner Chappel, Warner Music) no grao artista + periodo (mes) +
+# Universal, Warner Chappell, Warner Music) no grao artista + periodo (mes) +
 # origem + tipo de receita. 10.3M linhas observadas em 2026-07-01.
 query_source:
   schema: public
@@ -28,7 +28,7 @@ logical_sources:
     description: >
       View unificada de performance de royalties/receita por artista,
       periodo (mes), origem (sistema/distribuidora) e tipo de receita.
-      Cobre streaming/publishing/master (Orchard, Universal, Warner Chappel,
+      Cobre streaming/publishing/master (Orchard, Universal, Warner Chappell,
       Warner Music), shows ao vivo (DSU) e financeiro/ERP (Omie).
     schema: public
     table: vw_ft_dados_analiticos_union

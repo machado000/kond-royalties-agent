@@ -40,14 +40,10 @@ canonical_columns:
   origem:
     description: >
       Sistema/distribuidora de onde a linha veio. Valores observados:
-      'DSU', 'Omie', 'Orchard', 'Universal', 'Warner Chappel', 'Warner Music'.
+      'DSU', 'Omie', 'Orchard', 'Universal', 'Warner Chappell', 'Warner Music'.
     type: TEXT
     source: public.vw_ft_dados_analiticos_union.origem
     notes:
-      - "'Warner Chappel' (uma unica letra 'l') e o valor real gravado nesta
-         coluna — divergente do nome do schema Postgres `warner_chappell`
-         (duas letras 'l', grafia correta da empresa). Filtros devem usar a
-         grafia com uma letra 'l' para bater com os dados."
       - "'Omie' e um sistema de ERP financeiro (contas a pagar/receber), nao
          um distribuidor de streaming — misturado nesta view junto com as
          fontes de royalties propriamente ditas."
@@ -116,7 +112,7 @@ tables:
     - ft_orchard_dados_analiticos      # fonte de origem='Orchard' na view unificada
     - ft_somlivre_sonymusic            # NAO observado em origem= (verificar se esta incluido na view)
     - ft_universal_dados_analiticos    # fonte de origem='Universal' na view unificada
-    - ft_warner_chappell_dados_analiticos  # fonte de origem='Warner Chappel' na view unificada
+    - ft_warner_chappell_dados_analiticos  # fonte de origem='Warner Chappell' na view unificada
     - ft_warner_music_dados_analiticos # fonte de origem='Warner Music' na view unificada
     - stg_omie_consolidado
     - stg_orchard_revenue               # + variantes stg_orchard_revenue_YYYY_MM (particionado por mes)
@@ -148,8 +144,6 @@ data_quality_notes:
     - "10.3M linhas em 2026-07-01 (select count(*))."
     - "period/revenue_period sao TEXT em grao mensal ('AAAA-MM'), identicos em
        todas as amostras observadas — nao ha granularidade diaria nesta view."
-    - "origem='Warner Chappel' (uma letra 'l') diverge da grafia correta e do
-       nome do schema `warner_chappell` (duas letras 'l')."
     - "origem inclui 'Omie' (ERP financeiro geral) e 'DSU' (shows ao vivo),
        nao apenas distribuidoras de streaming/publishing — 'performance de
        royalties' nesta base e mais amplo, cobrindo qualquer receita

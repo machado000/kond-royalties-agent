@@ -1,4 +1,4 @@
-from mcp_server.models import PlannedQuery, RoyaltyQueryResult
+from mcp_server.models import PlannedQuery, RoyaltyAnswer, RoyaltyQueryResult
 from mcp_server.responder import build_fallback_answer, suggest_visual
 
 
@@ -23,3 +23,16 @@ def test_build_fallback_answer_uses_top_row() -> None:
 
     assert "Artista A" in answer.answer_markdown
     assert "lidera em revenue" in answer.summary
+
+
+def test_answer_tolerates_loosely_shaped_visual_from_llm() -> None:
+    # A OpenAI as vezes retorna suggested_visual com um formato que nao bate
+    # exatamente com VisualSuggestion (ex.: y_axis como string, nao lista).
+    # A resposta nao deve quebrar por causa disso.
+    answer = RoyaltyAnswer(
+        answer_markdown="teste",
+        summary="teste",
+        suggested_visual={"type": "bar_chart", "y_axis": "Receita (R$)"},
+        generation_mode="openai",
+    )
+    assert answer.suggested_visual["y_axis"] == "Receita (R$)"

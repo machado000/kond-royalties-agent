@@ -3,7 +3,7 @@
 ## Repositorio
 
 - local: `~/Projetos/KOND-analytics-agent`
-- remoto: a definir (renomear/criar `kond-royalties-agent` no GitHub)
+- remoto: [machado000/kond-royalties-agent](https://github.com/machado000/kond-royalties-agent) (privado)
 
 ## Contexto da refatoracao (2026-07-01)
 
@@ -14,7 +14,22 @@ royalties/receita de artistas em Postgres (uma conexao, varios schemas via
 producao (`describe-schema` + consultas de amostragem): o agente consulta
 `public.vw_ft_dados_analiticos_union` (10.3M linhas), uma view que unifica
 as fact tables de todas as origens/distribuidoras (DSU, Omie, Orchard,
-Universal, Warner Chappel, Warner Music).
+Universal, Warner Chappell, Warner Music).
+
+## Corrigido durante os testes de "chat" (2026-07-01)
+
+- `mcp_server/query_runner.py` nao convertia `Decimal` (retornado pelo
+  psycopg para colunas `numeric`) para `float`, quebrando a serializacao
+  JSON e forcando `ask` a cair no fallback deterministico
+- `RoyaltyAnswer.suggested_visual` exigia validacao estrita contra
+  `VisualSuggestion`; quando a OpenAI retornava um formato ligeiramente
+  diferente (ex.: `y_axis` como string em vez de lista), a resposta
+  quebrava com `ValidationError` e caia no fallback — agora aceita
+  `str | dict | VisualSuggestion`
+- corrigida uma afirmacao incorreta deste proprio TODO/dicionario: o valor
+  real da coluna `origem` e `'Warner Chappell'` (duas letras 'l'), nao
+  `'Warner Chappel'` como foi registrado por engano na primeira sessao de
+  introspeccao
 
 ## Tarefas pendentes
 
@@ -30,17 +45,15 @@ Universal, Warner Chappel, Warner Music).
 3. [ ] Confirmar com o time se `origem='Omie'` (ERP financeiro) deve
    continuar misturado na mesma view de "performance de royalties" ou se
    deveria ser filtrado/separado por padrao
-4. [ ] Avaliar se `origem='Warner Chappel'` (grafia com uma letra 'l' no
-   dado) deveria ser corrigida na origem, ou se o agente deve continuar
-   compensando isso no planner (ja implementado em
-   `mcp_server/planner.py::FILTER_KEYWORDS`)
 
 ### Planner — PT-BR
 
-5. [ ] Ampliar sinonimos de metricas/dimensoes com o vocabulario real do
+4. [ ] Ampliar sinonimos de metricas/dimensoes com o vocabulario real do
    negocio (ex.: "master" vs "gravadora", "publishing" vs "editora")
-6. [ ] Avaliar se vale expor uma dimensao `label`/gravadora a partir de
+5. [ ] Avaliar se vale expor uma dimensao `label`/gravadora a partir de
    `matched_artista_id` -> `dim_artistas.gravadora` (hoje nao exposta)
+6. [ ] `infer_date_range` nao reconhece "ultimo ano"/"last year" — hoje
+   cai silenciosamente em "sem intervalo explicito" (todo o historico)
 
 ### Enriquecimento (schemas de detalhe ainda nao usados)
 
@@ -63,7 +76,7 @@ Universal, Warner Chappel, Warner Music).
 
 14. [ ] Converter CLI em tools MCP reais alem das ja existentes
     (`generate_royalty_report` ainda pendente)
-15. [ ] Avaliar output schema mais estrito para resposta OpenAI
+15. [ ] Avaliar output schema mais estrito (`json_schema`) para a resposta
+    da OpenAI — reduziria a chance de o `suggested_visual` vir em formato
+    inesperado (ver nota de correcao acima)
 16. [ ] Definir contrato de artefato visual alem da sugestao
-17. [ ] Decidir se o repositorio remoto sera renomeado/criado como
-    `kond-royalties-agent` no GitHub

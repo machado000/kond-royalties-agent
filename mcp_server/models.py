@@ -48,7 +48,7 @@ class VisualSuggestion(BaseModel):
 class RoyaltyAnswer(BaseModel):
     answer_markdown: str
     summary: str
-    suggested_visual: str | VisualSuggestion | None = None
+    suggested_visual: str | dict[str, Any] | VisualSuggestion | None = None
     suggested_followups: list[str] = Field(default_factory=list)
     generation_mode: str = "fallback"
     query_result: RoyaltyQueryResult | None = None

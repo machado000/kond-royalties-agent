@@ -29,7 +29,7 @@ dimensions:
     label: Origem
     description: >
       Sistema/distribuidora de origem da linha (DSU, Omie, Orchard,
-      Universal, Warner Chappel, Warner Music).
+      Universal, Warner Chappell, Warner Music).
   revenue_type:
     label: Tipo de receita
     description: Categoria da receita (Editora, Gravadora, Publicidade, Shows, N/D).

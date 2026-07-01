@@ -25,15 +25,13 @@ DIMENSION_KEYWORDS = {
 }
 
 # Valores gravados na coluna `origem` (ver config/column_dictionary.yml).
-# 'Warner Chappel' e a grafia real no banco (uma letra 'l'), diferente do
-# nome do schema Postgres `warner_chappell` (duas letras 'l').
 FILTER_KEYWORDS = {
     "origem": {
         "DSU": ["dsu"],
         "Omie": ["omie"],
         "Orchard": ["orchard"],
         "Universal": ["universal"],
-        "Warner Chappel": ["warner chappell", "warner chappel"],
+        "Warner Chappell": ["warner chappell", "warner chappel"],
         "Warner Music": ["warner music"],
     },
     "revenue_type": {
