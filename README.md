@@ -164,7 +164,7 @@ Exige duas variaveis de ambiente:
 Ha um deploy de referencia rodando em Docker em `kern-data`, acessivel de
 duas formas (ambas ativas ao mesmo tempo):
 
-- HTTPS via Caddy: `https://kerndata1.ddns.net/royalties-mcp/mcp`
+- HTTPS via Caddy: `https://kerndata1.ddns.net/kond-royalties-mcp/mcp`
   (`handle_path` no `KERN-prefect/Caddyfile`, sem porta propria publicada)
 - HTTP direto: `http://kerndata1.ddns.net:8081/mcp` (porta publicada no
   `docker-compose.yml`, mesma convencao do `mistral-analytics-mcp` em
