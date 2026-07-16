@@ -171,8 +171,13 @@ duas formas (ambas ativas ao mesmo tempo):
   `:8080`)
 
 `kern-data` hospeda varios MCPs, um por servico, cada um em uma porta
-direta sequencial (alem de qualquer rota HTTPS via Caddy que se queira
-adicionar depois):
+direta sequencial, e cada um tambem pode ganhar uma rota HTTPS via Caddy
+(`handle_path` no `KERN-prefect/Caddyfile`) — `mistral-analytics-mcp`
+recebeu a mesma tratativa: rota `https://kerndata1.ddns.net/mistral-analytics-mcp/mcp`,
+alem de continuar em `http://kerndata1.ddns.net:8080/mcp`. Para isso, seu
+`docker-compose.yml` tambem passou a se conectar na rede externa
+`kern-prefect_default` (mesmo padrao usado aqui), e `MCP_ALLOWED_HOSTS` no
+seu `.env` inclui as duas formas de Host header (`:8080` e sem porta).
 
 | Porta | Servico |
 |-------|---------|
