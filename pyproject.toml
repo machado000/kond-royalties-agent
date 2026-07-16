@@ -20,6 +20,9 @@ dev = [
   "pytest>=8.3.4",
   "ruff>=0.8.2",
 ]
+http = [
+  "mcp>=1.28.0",
+]
 
 [build-system]
 requires = ["setuptools>=75.0"]

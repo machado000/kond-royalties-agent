@@ -80,3 +80,12 @@ Universal, Warner Chappell, Warner Music).
     da OpenAI — reduziria a chance de o `suggested_visual` vir em formato
     inesperado (ver nota de correcao acima)
 16. [ ] Definir contrato de artefato visual alem da sugestao
+17. [x] Transporte HTTP remoto (`mcp_http.py`, `serve-http`) portado da
+    versao BigQuery e deployado em Docker em `kern-data`
+    (`~/kond-royalties-mcp/`), atras do Caddy do Prefect via path
+    `/royalties-mcp/*` (2026-07-16)
+18. [ ] Avaliar OAuth sobre o transporte HTTP caso se queira registrar como
+    "custom connector" remoto no claude.ai chat (hoje so Bearer token —
+    suficiente para clientes que suportam header customizado, mas nao para
+    o fluxo de conector do claude.ai)
+19. [ ] Rotina de rotacao do token em `MCP_API_KEYS` (`kern-data:~/kond-royalties-mcp/.env`)

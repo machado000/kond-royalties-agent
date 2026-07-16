@@ -145,6 +145,28 @@ MCP na inicializacao.
 > Use `--dry-run` em qualquer um dos dois comandos acima para ver o
 > resultado sem escrever o arquivo.
 
+### Transporte remoto (Streamable HTTP)
+
+Alem do stdio local, o servidor tambem expoe um transporte HTTP
+(`mcp_server/mcp_http.py`, comando `serve-http`), para hospedagem
+compartilhada — ex.: um MCP acessivel por varias pessoas/maquinas sem cada
+uma precisar de credenciais de Postgres localmente. Requer o extra
+`pip install ".[http]"`.
+
+Exige duas variaveis de ambiente:
+
+- `MCP_API_KEYS`: lista de tokens Bearer validos, separados por virgula
+  (o processo recusa iniciar sem isso — nunca serve sem autenticacao)
+- `MCP_ALLOWED_HOSTS`: hosts reais (dominio, sem porta se atras de proxy)
+  usados neste deploy, para satisfazer a protecao contra DNS rebinding do
+  SDK `mcp` sem desativa-la
+
+Ha um deploy de referencia rodando em Docker em `kern-data`
+(`~/kond-royalties-mcp/` no host), atras do Caddy ja usado pelo Prefect
+nesse mesmo host, roteado por path (`/royalties-mcp/*`) em vez de
+subdominio — o hostname DDNS existente nao suporta subdominios
+arbitrarios. Ver `Dockerfile` e `docker-compose.yml` na raiz do repo.
+
 ### Distribuicao
 
 Para instalar a partir do GitHub sem clonar manualmente:

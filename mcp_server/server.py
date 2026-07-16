@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 
 from mcp_server.mcp_stdio import serve_stdio
 from mcp_server.service import (
@@ -33,6 +34,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     schema_parser.add_argument("--schema", default=None, help="Schema especifico. Se omitido, usa todos os habilitados.")
     subparsers.add_parser("serve-mcp", help="Inicia o servidor MCP por stdio.")
+    subparsers.add_parser("serve-http", help="Inicia o servidor MCP via Streamable HTTP.")
     plan_parser = subparsers.add_parser("plan-query", help="Planeja uma consulta sem executa-la.")
     plan_parser.add_argument("--question", required=True)
     plan_parser.add_argument("--limit", type=int, default=100)
@@ -63,6 +65,11 @@ def main() -> None:
         raise SystemExit(status_code)
     if args.command == "serve-mcp":
         raise SystemExit(serve_stdio())
+    if args.command == "serve-http":
+        from mcp_server.mcp_http import run_http  # lazy: mantem `mcp` opcional
+
+        port = int(os.environ.get("PORT", "8080"))
+        raise SystemExit(run_http(host="0.0.0.0", port=port))
     if args.command == "plan-query":
         raise SystemExit(_emit(get_plan_payload(args.question, args.limit)))
     if args.command == "run-query":

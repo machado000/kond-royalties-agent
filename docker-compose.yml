@@ -1,0 +1,13 @@
+services:
+  kond-royalties-mcp:
+    build: .
+    env_file:
+      - .env
+    networks:
+      - default
+      - kern-prefect_default
+    restart: unless-stopped
+
+networks:
+  kern-prefect_default:
+    external: true
