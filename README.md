@@ -161,11 +161,29 @@ Exige duas variaveis de ambiente:
   usados neste deploy, para satisfazer a protecao contra DNS rebinding do
   SDK `mcp` sem desativa-la
 
-Ha um deploy de referencia rodando em Docker em `kern-data`
-(`~/kond-royalties-mcp/` no host), atras do Caddy ja usado pelo Prefect
-nesse mesmo host, roteado por path (`/royalties-mcp/*`) em vez de
-subdominio — o hostname DDNS existente nao suporta subdominios
-arbitrarios. Ver `Dockerfile` e `docker-compose.yml` na raiz do repo.
+Ha um deploy de referencia rodando em Docker em `kern-data`, acessivel de
+duas formas (ambas ativas ao mesmo tempo):
+
+- HTTPS via Caddy: `https://kerndata1.ddns.net/royalties-mcp/mcp`
+  (`handle_path` no `KERN-prefect/Caddyfile`, sem porta propria publicada)
+- HTTP direto: `http://kerndata1.ddns.net:8081/mcp` (porta publicada no
+  `docker-compose.yml`, mesma convencao do `mistral-analytics-mcp` em
+  `:8080`)
+
+`kern-data` hospeda varios MCPs, um por servico, cada um em uma porta
+direta sequencial (alem de qualquer rota HTTPS via Caddy que se queira
+adicionar depois):
+
+| Porta | Servico |
+|-------|---------|
+| 8080  | `mistral-analytics-mcp` (BigQuery, legado) |
+| 8081  | `kond-royalties-mcp` (este projeto) |
+| 8082+ | reservado para proximos MCPs |
+
+Ao adicionar um novo MCP nesse host, escolher a proxima porta livre e
+adicionar `kerndata1.ddns.net:PORTA` em `MCP_ALLOWED_HOSTS` daquele
+servico (protecao contra DNS rebinding do SDK `mcp`). Ver `Dockerfile` e
+`docker-compose.yml` na raiz do repo para o padrao completo.
 
 ### Distribuicao
 

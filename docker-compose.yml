@@ -1,6 +1,8 @@
 services:
   kond-royalties-mcp:
     build: .
+    ports:
+      - "8081:8080"
     env_file:
       - .env
     networks:
