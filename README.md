@@ -153,13 +153,25 @@ compartilhada — ex.: um MCP acessivel por varias pessoas/maquinas sem cada
 uma precisar de credenciais de Postgres localmente. Requer o extra
 `pip install ".[http]"`.
 
-Exige duas variaveis de ambiente:
+Autenticacao (`mcp_server/oauth.py`) aceita duas fontes de confianca ao
+mesmo tempo, na ordem abaixo — pelo menos uma precisa estar configurada, o
+processo recusa iniciar sem nenhuma:
 
-- `MCP_API_KEYS`: lista de tokens Bearer validos, separados por virgula
-  (o processo recusa iniciar sem isso — nunca serve sem autenticacao)
-- `MCP_ALLOWED_HOSTS`: hosts reais (dominio, sem porta se atras de proxy)
-  usados neste deploy, para satisfazer a protecao contra DNS rebinding do
-  SDK `mcp` sem desativa-la
+- `MCP_API_KEYS`: lista de tokens Bearer estaticos, separados por virgula
+  — caminho rapido, sem chamada de rede, para clientes ja configurados
+  manualmente (Antigravity, scripts)
+- `OAUTH_ISSUER_URL` + `OAUTH_RESOURCE_URL`: delegacao OAuth 2.1 para um
+  IdP externo (WorkOS AuthKit em producao) — necessario para clientes que
+  fazem o fluxo OAuth completo (ex.: conector remoto do claude.ai). Token
+  validado localmente como JWT (assinatura RS256 via JWKS, `iss`/`aud`/`exp`)
+  contra o IdP configurado; `OAUTH_JWKS_URL` e `OAUTH_REQUIRED_SCOPES` sao
+  opcionais (ver `.env.example`)
+
+E sempre, independente do metodo de auth:
+
+- `MCP_ALLOWED_HOSTS`: hosts reais (dominio[:porta]) usados neste deploy,
+  para satisfazer a protecao contra DNS rebinding do SDK `mcp` sem
+  desativa-la
 
 Ha um deploy de referencia rodando em Docker em `kern-data`, acessivel de
 duas formas (ambas ativas ao mesmo tempo):
@@ -189,6 +201,24 @@ Ao adicionar um novo MCP nesse host, escolher a proxima porta livre e
 adicionar `kerndata1.ddns.net:PORTA` em `MCP_ALLOWED_HOSTS` daquele
 servico (protecao contra DNS rebinding do SDK `mcp`). Ver `Dockerfile` e
 `docker-compose.yml` na raiz do repo para o padrao completo.
+
+**OAuth (WorkOS AuthKit) em producao**: `kond-royalties-mcp` delega para
+`https://dynamic-asteroid-97.authkit.app` (projeto WorkOS "kond-analytics").
+Alem da rota `handle_path /kond-royalties-mcp/*` de sempre, o RFC 9728
+exige uma rota **adicional e sem prefixo removido** no `KERN-prefect/Caddyfile`
+para o endpoint de metadados, porque o SDK registra o caminho completo do
+`OAUTH_RESOURCE_URL` (incluindo `/kond-royalties-mcp`) sob
+`/.well-known/oauth-protected-resource/...`:
+
+```
+handle /.well-known/oauth-protected-resource/kond-royalties-mcp/* {
+  reverse_proxy kond-royalties-mcp:8080
+}
+```
+
+Sempre validar (`docker exec kern-prefect-caddy-1 caddy validate --config
+/etc/caddy/Caddyfile`) antes de `caddy reload` — o Caddyfile atende varios
+servicos, um erro de sintaxe derruba o roteamento de todos.
 
 ### Distribuicao
 
