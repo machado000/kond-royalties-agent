@@ -39,20 +39,20 @@ def _load_static_tokens() -> set[str]:
     return {token.strip() for token in raw.split(",") if token.strip()}
 
 
-def _load_oauth_config() -> tuple[str, str, str] | None:
-    """Le a config de delegacao OAuth (WorkOS AuthKit ou IdP compativel).
+def _load_oauth_config() -> tuple[str, str, str | None] | None:
+    """Le a config de delegacao OAuth (WorkOS AuthKit, Auth0 ou IdP compativel).
 
     Retorna `(issuer_url, resource_url, jwks_url)`, ou `None` se OAuth nao
     estiver configurado neste deploy -- nesse caso o servidor segue apenas
-    com chaves estaticas (`MCP_API_KEYS`), como antes.
+    com chaves estaticas (`MCP_API_KEYS`), como antes. `jwks_url` e `None`
+    quando nao definido explicitamente -- `JWTBearerTokenVerifier` descobre
+    via OpenID Connect Discovery nesse caso.
     """
     issuer_url = os.environ.get("OAUTH_ISSUER_URL", "").strip()
     resource_url = os.environ.get("OAUTH_RESOURCE_URL", "").strip()
     if not issuer_url or not resource_url:
         return None
-    jwks_url = os.environ.get("OAUTH_JWKS_URL", "").strip()
-    if not jwks_url:
-        jwks_url = f"{issuer_url.rstrip('/')}/oauth2/jwks"
+    jwks_url = os.environ.get("OAUTH_JWKS_URL", "").strip() or None
     return issuer_url, resource_url, jwks_url
 
 
@@ -69,8 +69,8 @@ if _OAUTH_CONFIG:
         token_verifier=JWTBearerTokenVerifier(
             valid_tokens=_STATIC_TOKENS,
             issuer_url=_issuer_url,
-            jwks_url=_jwks_url,
             audience=_resource_url,
+            jwks_url=_jwks_url,
         ),
         auth=AuthSettings(
             issuer_url=_issuer_url,

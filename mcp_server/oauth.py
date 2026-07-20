@@ -19,8 +19,21 @@ externo configurado via `OAUTH_ISSUER_URL`.
 from __future__ import annotations
 
 import jwt
+import requests
 from jwt import PyJWKClient
 from mcp.server.auth.provider import AccessToken, TokenVerifier
+
+
+def _discover_jwks_url(issuer_url: str) -> str:
+    """Descobre o `jwks_uri` via OpenID Connect Discovery
+    (`{issuer}/.well-known/openid-configuration`), o mecanismo padrao
+    suportado por qualquer IdP compativel (WorkOS, Auth0, etc.) -- evita
+    hardcodar a convencao de path de um provedor especifico.
+    """
+    discovery_url = f"{issuer_url}/.well-known/openid-configuration"
+    response = requests.get(discovery_url, timeout=10)
+    response.raise_for_status()
+    return response.json()["jwks_uri"]
 
 
 class JWTBearerTokenVerifier(TokenVerifier):
@@ -28,8 +41,8 @@ class JWTBearerTokenVerifier(TokenVerifier):
         self,
         valid_tokens: set[str],
         issuer_url: str,
-        jwks_url: str,
         audience: str,
+        jwks_url: str | None = None,
     ) -> None:
         self._valid_tokens = valid_tokens
         # O claim `iss` de um token real normalmente nao tem barra final,
@@ -37,7 +50,8 @@ class JWTBearerTokenVerifier(TokenVerifier):
         # nao depender do .env estar byte-a-byte identico ao token.
         self._issuer_url = issuer_url.rstrip("/")
         self._audience = audience
-        self._jwk_client = PyJWKClient(jwks_url)
+        resolved_jwks_url = jwks_url or _discover_jwks_url(self._issuer_url)
+        self._jwk_client = PyJWKClient(resolved_jwks_url)
 
     async def verify_token(self, token: str) -> AccessToken | None:
         if token in self._valid_tokens:
