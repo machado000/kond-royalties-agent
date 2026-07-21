@@ -26,12 +26,20 @@ def _format_number(value: Any) -> str:
 def suggest_visual(plan: PlannedQuery) -> str:
     if "period" in plan.dimensions:
         return "linha temporal"
+    if "track" in plan.dimensions:
+        return "barras por faixa"
     if "artist" in plan.dimensions:
         return "barras por artista"
+    if "composer" in plan.dimensions:
+        return "barras por compositor"
     if "origem" in plan.dimensions:
         return "barras por origem"
     if "revenue_type" in plan.dimensions:
         return "barras por tipo de receita"
+    if "territory" in plan.dimensions:
+        return "barras por territorio"
+    if "platform" in plan.dimensions:
+        return "barras por plataforma"
     return "tabela resumida"
 
 

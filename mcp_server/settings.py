@@ -22,6 +22,12 @@ class PostgresSourceConfig(BaseModel):
     def qualified_table(self) -> str:
         return f"{self.query_schema}.{self.query_table}"
 
+    def qualified_table_for(self, source_name: str) -> str:
+        if source_name not in self.logical_sources:
+            raise ValueError(f"Fonte desconhecida em postgres_sources.yml: {source_name}")
+        entry = self.logical_sources[source_name]
+        return f"{entry['schema']}.{entry['table']}"
+
 
 class AppSettings(BaseModel):
     openai_api_key: str | None = None

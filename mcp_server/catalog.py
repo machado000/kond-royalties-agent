@@ -11,15 +11,28 @@ from mcp_server.settings import ROOT_DIR
 
 
 class CatalogItem(BaseModel):
-    label: str
+    label: str | None = None
     description: str | None = None
     expression_hint: str | None = None
 
 
-class SemanticCatalog(BaseModel):
+class SourceCatalog(BaseModel):
+    default: bool = False
+    description: str | None = None
     metrics: dict[str, CatalogItem] = Field(default_factory=dict)
     dimensions: dict[str, CatalogItem] = Field(default_factory=dict)
+
+
+class SemanticCatalog(BaseModel):
+    sources: dict[str, SourceCatalog] = Field(default_factory=dict)
     approved_sources: list[str] = Field(default_factory=list)
+
+    @property
+    def default_source(self) -> str:
+        for name, source in self.sources.items():
+            if source.default:
+                return name
+        return next(iter(self.sources), "royalty_performance")
 
 
 def load_semantic_catalog(path: Path | None = None) -> SemanticCatalog:
@@ -32,8 +45,15 @@ def load_semantic_catalog(path: Path | None = None) -> SemanticCatalog:
 def build_catalog_payload() -> dict[str, object]:
     catalog = load_semantic_catalog()
     return {
-        "version": "v1",
-        "metrics": {name: item.model_dump() for name, item in catalog.metrics.items()},
-        "dimensions": {name: item.model_dump() for name, item in catalog.dimensions.items()},
+        "version": "v2",
+        "default_source": catalog.default_source,
+        "sources": {
+            name: {
+                "description": source.description,
+                "metrics": {n: item.model_dump() for n, item in source.metrics.items()},
+                "dimensions": {n: item.model_dump() for n, item in source.dimensions.items()},
+            }
+            for name, source in catalog.sources.items()
+        },
         "approved_sources": catalog.approved_sources,
     }

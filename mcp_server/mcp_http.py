@@ -104,19 +104,19 @@ def _describe_schema_tool(schema: str | None = None) -> dict[str, Any]:
     return payload
 
 
-def _plan_tool(question: str, limit: int = 100) -> dict[str, Any]:
-    return get_plan_payload(question=question, limit=limit)
+def _plan_tool(question: str, limit: int = 100, source: str | None = None) -> dict[str, Any]:
+    return get_plan_payload(question=question, limit=limit, source=source)
 
 
-def _run_query_tool(question: str, limit: int = 100) -> dict[str, Any]:
-    status_code, payload = get_run_query_payload(question=question, limit=limit)
+def _run_query_tool(question: str, limit: int = 100, source: str | None = None) -> dict[str, Any]:
+    status_code, payload = get_run_query_payload(question=question, limit=limit, source=source)
     if status_code != 0:
         raise ToolError(json.dumps(payload, ensure_ascii=False))
     return payload
 
 
-def _ask_tool(question: str, limit: int = 100) -> dict[str, Any]:
-    status_code, payload = get_ask_payload(question=question, limit=limit)
+def _ask_tool(question: str, limit: int = 100, source: str | None = None) -> dict[str, Any]:
+    status_code, payload = get_ask_payload(question=question, limit=limit, source=source)
     if status_code != 0:
         raise ToolError(json.dumps(payload, ensure_ascii=False))
     return payload
@@ -149,22 +149,34 @@ mcp.tool(
     ),
 )(_describe_schema_tool)
 
+_SOURCE_DESCRIPTION = (
+    "Fonte a consultar (ver `get_royalty_catalog`). Se omitido, e inferida da "
+    "pergunta, com fallback para 'royalty_performance' (view unificada "
+    "cross-plataforma). Use uma fonte de detalhe (`*_detail`) para perguntas "
+    "sobre faixa/musica/compositor/ISRC/territorio de uma plataforma "
+    "especifica -- nunca combine/agregue resultados de fontes diferentes."
+)
+
 mcp.tool(
     name="plan_royalty_query",
     title="Plan Royalty Query",
-    description="Converte uma pergunta em plano semantico controlado.",
+    description=f"Converte uma pergunta em plano semantico controlado. `source`: {_SOURCE_DESCRIPTION}",
 )(_plan_tool)
 
 mcp.tool(
     name="run_royalty_query",
     title="Run Royalty Query",
-    description="Executa consulta controlada no Postgres e retorna plano, SQL e linhas.",
+    description=(
+        f"Executa consulta controlada no Postgres e retorna plano, SQL e linhas. `source`: {_SOURCE_DESCRIPTION}"
+    ),
 )(_run_query_tool)
 
 mcp.tool(
     name="ask_royalties",
     title="Ask Royalties",
-    description="Executa a consulta e devolve resposta executiva em portugues do Brasil.",
+    description=(
+        f"Executa a consulta e devolve resposta executiva em portugues do Brasil. `source`: {_SOURCE_DESCRIPTION}"
+    ),
 )(_ask_tool)
 
 

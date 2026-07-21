@@ -69,14 +69,14 @@ def get_schema_payload(schema: str | None) -> tuple[int, dict[str, object]]:
     }
 
 
-def get_plan_payload(question: str, limit: int) -> dict[str, object]:
-    request = RoyaltyQueryRequest(question=question, limit=limit)
+def get_plan_payload(question: str, limit: int, source: str | None = None) -> dict[str, object]:
+    request = RoyaltyQueryRequest(question=question, limit=limit, source=source)
     plan = plan_royalty_query(request)
     return plan.model_dump()
 
 
-def get_run_query_payload(question: str, limit: int) -> tuple[int, dict[str, object]]:
-    request = RoyaltyQueryRequest(question=question, limit=limit)
+def get_run_query_payload(question: str, limit: int, source: str | None = None) -> tuple[int, dict[str, object]]:
+    request = RoyaltyQueryRequest(question=question, limit=limit, source=source)
     try:
         plan, result = run_royalty_query(request)
     except Exception as exc:
@@ -93,8 +93,8 @@ def get_run_query_payload(question: str, limit: int) -> tuple[int, dict[str, obj
     }
 
 
-def get_ask_payload(question: str, limit: int) -> tuple[int, dict[str, object]]:
-    request = RoyaltyQueryRequest(question=question, limit=limit)
+def get_ask_payload(question: str, limit: int, source: str | None = None) -> tuple[int, dict[str, object]]:
+    request = RoyaltyQueryRequest(question=question, limit=limit, source=source)
     try:
         plan, answer = ask_royalties(request)
     except Exception as exc:

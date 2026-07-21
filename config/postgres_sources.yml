@@ -1,23 +1,26 @@
 # Configuracao de acesso ao Postgres do agente KOND.
 #
-# STATUS: VALIDADO contra o banco real em 2026-07-01 via
-# `kond-royalties-mcp describe-schema` (introspeccao de information_schema)
-# e consultas de amostragem diretas.
+# STATUS: VALIDADO contra o banco real em 2026-07-21 (re-introspeccao das
+# detail_tables por plataforma — ver config/column_dictionary.yml).
 
 # Uma unica conexao (DATABASE_URL ou PGHOST/PGPORT/PGDATABASE/PGUSER/
 # PGPASSWORD/PGSSLMODE) para varios schemas, selecionados via search_path --
 # ver mcp_server/settings.py e mcp_server/postgres.py.
 connection:
   schemas:
-    - public            # view unificada entre labels/distribuidoras + dimensoes compartilhadas
+    - public            # view unificada + detail tables da maioria das origens
     - universal          # detalhe Universal Music (magmedia, musica, compositor)
     - warner_chappell     # detalhe Warner Chappell (statements de publishing)
 
-# Tabela/view que o agente consulta hoje (mcp_server/query_builder.py).
+# Tabela/view que o agente consulta hoje por padrao (mcp_server/query_builder.py).
 # `public.vw_ft_dados_analiticos_union` e uma view ja consolidada, unindo as
 # fact tables de todas as origens/distribuidoras (DSU, Omie, Orchard,
 # Universal, Warner Chappell, Warner Music) no grao artista + periodo (mes) +
 # origem + tipo de receita. 10.3M linhas observadas em 2026-07-01.
+#
+# IMPORTANTE: nao agregar/somar dados desta view com nenhuma das
+# `*_detail` abaixo (ver regra critica em config/column_dictionary.yml) —
+# sao os mesmos eventos em granularidades diferentes.
 query_source:
   schema: public
   table: vw_ft_dados_analiticos_union
@@ -29,22 +32,69 @@ logical_sources:
       View unificada de performance de royalties/receita por artista,
       periodo (mes), origem (sistema/distribuidora) e tipo de receita.
       Cobre streaming/publishing/master (Orchard, Universal, Warner Chappell,
-      Warner Music), shows ao vivo (DSU) e financeiro/ERP (Omie).
+      Warner Music), shows ao vivo (DSU) e financeiro/ERP (Omie). Fonte
+      padrao (`query_source`) para perguntas cross-plataforma/agregadas.
     schema: public
     table: vw_ft_dados_analiticos_union
 
-  # Schemas de detalhe por label, ainda NAO consultados pelo agente (apenas
-  # documentados aqui para referencia futura). Uteis para analises mais
-  # profundas do que a view unificada permite (ex.: por musica/compositor).
+  # Fontes de detalhe por plataforma — dados "limpos" por origem individual,
+  # ainda NAO consultadas pelo agente via query_builder (documentadas para
+  # referencia/futura extensao multi-fonte). Uteis para perguntas que pedem
+  # granularidade que a view unificada nao tem (faixa, compositor, ISRC,
+  # territorio, etc.) — ver config/column_dictionary.yml::detail_tables para
+  # o schema completo de cada uma. NUNCA combinar mais de uma dessas na
+  # mesma consulta, nem com `royalty_performance` (duplicacao de valores).
+  dsu_detail:
+    description: Contratos e shows ao vivo (fonte de origem='DSU').
+    schema: public
+    table: ft_dsu_dados_analiticos
+  omie_detail:
+    description: Contas a pagar/receber do ERP Omie (fonte de origem='Omie').
+    schema: public
+    table: ft_omie_dados_analiticos
+  orchard_detail:
+    description: >
+      Statement Orchard (fonte de origem='Orchard') — tem faixa, ISRC e
+      territorio, ausentes na view unificada.
+    schema: public
+    table: ft_orchard_dados_analiticos
+  somlivre_detail:
+    description: >
+      Statement Som Livre/Sony Music — NAO confirmado se esta incluido em
+      `origem=` na view unificada (ver TODO.md item 1).
+    schema: public
+    table: ft_somlivre_sonymusic
   universal_detail:
     description: >
-      Tabelas de dimensao e staging da Universal Music (musica, compositor,
-      cliente, fonte/canal, tipo e grupo de renda) — schema `universal`.
+      Statement Universal Music (fonte de origem='Universal') — tem faixa
+      e compositor, ausentes na view unificada.
+    schema: public
+    table: ft_universal_dados_analiticos
+  universal_musica:
+    description: Dimensao de faixas/musicas da Universal, para join via `codigo_musica`.
     schema: universal
-    table: stg_universal_magmedia
+    table: dim_musica
+  universal_compositor:
+    description: Dimensao de compositores da Universal.
+    schema: universal
+    table: dim_compositor
   warner_chappell_detail:
     description: >
-      Statement bruto/staging da Warner Chappell (publishing) — schema
-      `warner_chappell`.
+      Statement Warner Chappell RAW/completo (23 colunas, com breakdown
+      fiscal e detalhe de obra/compositor) — preferir a
+      `public.ft_warner_chappell_dados_analiticos` (versao simplificada,
+      11 colunas) para analises detalhadas.
     schema: warner_chappell
     table: ft_warner_statement
+  warner_music_detail:
+    description: >
+      Statement Warner Music (fonte de origem='Warner Music') — tem faixa,
+      DSP e territorio, ausentes na view unificada.
+    schema: public
+    table: ft_warner_music_dados_analiticos
+  dim_artistas:
+    description: >
+      Dimensao de artistas/titulares de direitos, para enriquecimento via
+      `matched_artista_id` (gravadora, CPF, IDs por plataforma/distribuidor).
+    schema: public
+    table: dim_artistas

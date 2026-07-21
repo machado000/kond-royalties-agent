@@ -14,6 +14,7 @@ class DateRange(BaseModel):
 
 class RoyaltyQueryRequest(BaseModel):
     question: str
+    source: str | None = None
     metrics: list[str] = Field(default_factory=list)
     dimensions: list[str] = Field(default_factory=list)
     date_range: DateRange | None = None
@@ -30,6 +31,7 @@ class RoyaltyQueryResult(BaseModel):
 
 class PlannedQuery(BaseModel):
     question: str
+    source: str
     metrics: list[str] = Field(default_factory=list)
     dimensions: list[str] = Field(default_factory=list)
     date_range: DateRange | None = None

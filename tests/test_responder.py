@@ -3,12 +3,14 @@ from mcp_server.responder import build_fallback_answer, suggest_visual
 
 
 def test_suggest_visual_for_artist() -> None:
-    plan = PlannedQuery(question="teste", metrics=["revenue"], dimensions=["artist"])
+    plan = PlannedQuery(question="teste", source="royalty_performance", metrics=["revenue"], dimensions=["artist"])
     assert suggest_visual(plan) == "barras por artista"
 
 
 def test_build_fallback_answer_uses_top_row() -> None:
-    plan = PlannedQuery(question="teste", metrics=["revenue", "royalties"], dimensions=["artist"])
+    plan = PlannedQuery(
+        question="teste", source="royalty_performance", metrics=["revenue", "royalties"], dimensions=["artist"]
+    )
     result = RoyaltyQueryResult(
         sql="select 1",
         rows=[

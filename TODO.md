@@ -55,14 +55,31 @@ Universal, Warner Chappell, Warner Music).
 6. [ ] `infer_date_range` nao reconhece "ultimo ano"/"last year" — hoje
    cai silenciosamente em "sem intervalo explicito" (todo o historico)
 
-### Enriquecimento (schemas de detalhe ainda nao usados)
+### Enriquecimento (fontes de detalhe por plataforma)
 
-7. [ ] Avaliar uso de `universal.dim_musica`/`dim_compositor` para
-   analises por musica/compositor (hoje so ha o grao artista+periodo)
-8. [ ] Avaliar uso de `warner_chappell.ft_warner_statement` para o mesmo
-   tipo de detalhe do lado Warner Chappell
-9. [ ] Avaliar join com `public.dim_artistas` (via `matched_artista_id`)
-   para expor gravadora, CPF, IDs por plataforma/distribuidor
+7. [x] Multiplas fontes de detalhe por plataforma implementadas
+   (2026-07-21): `dsu_detail`, `omie_detail`, `orchard_detail`,
+   `somlivre_detail`, `universal_detail`, `warner_chappell_detail`,
+   `warner_music_detail` — cada uma com seu proprio schema de
+   metrics/dimensions em `semantic_catalog/catalog.yml`, roteadas via novo
+   campo `source` em `PlannedQuery`/`RoyaltyQueryRequest` (inferido pelo
+   planner via palavras-chave de faixa/musica/compositor + plataforma, ou
+   passado explicitamente pelo chamador). Validado ponta a ponta em
+   producao via `ask_royalties` (faixas da Orchard por artista).
+8. [ ] `universal.dim_musica`/`dim_compositor` e
+   `warner_chappell.dim_exploitation_source` ainda nao usadas como JOIN de
+   enriquecimento — hoje as fontes `*_detail` expoem apenas colunas da
+   propria tabela fato, sem join (decisao deliberada para evitar chaves de
+   join nao confirmadas — ver `.context/architecture-notes.md`)
+9. [ ] Avaliar join com `public.dim_artistas` (via `matched_artista_id` ou
+   chaves especificas por plataforma — `dsu_artista`, `omie_projeto`,
+   `cod_sony`, etc.) para normalizar o `artist` raw das fontes `dsu_detail`,
+   `omie_detail`, `somlivre_detail` e ambas Warner — hoje essas fontes
+   expoem nomes brutos, nao casados contra o cadastro de artistas
+   (documentado em `config/column_dictionary.yml`)
+9b. [ ] Investigar titulos de faixa corrompidos (ex.: `????????????????????`)
+    observados em `orchard_detail` — possivel problema de encoding na
+    fonte, nao no agente
 
 ### Relatorio PDF
 

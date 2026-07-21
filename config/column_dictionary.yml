@@ -1,17 +1,32 @@
 # Dicionario de colunas do agente KOND (royalties de artistas)
 #
-# STATUS: VALIDADO contra o banco real em 2026-07-01 via
-# `kond-royalties-mcp describe-schema` + consultas de amostragem.
+# STATUS: VALIDADO contra o banco real em 2026-07-21 (re-introspeccao apos
+# mudancas de schema desde 2026-07-01 — ver `cost` em canonical_columns).
 #
 # A tabela de consulta configurada em config/postgres_sources.yml
 # (query_source) e `public.vw_ft_dados_analiticos_union`: uma view que
 # unifica, no schema `public`, as fact tables de todas as
 # origens/distribuidoras em uma unica tabela larga. 10.3M linhas em
-# 2026-07-01.
+# 2026-07-01, contagem nao repetida em 2026-07-21.
 #
 # Convencao: o nome canonico (chave) e o que o agente e o catalogo semantico
 # usam em `expression_hint` (ver semantic_catalog/catalog.yml) e nas
 # dimensoes (usadas como nome de coluna literal em mcp_server/query_builder.py).
+#
+# REGRA CRITICA — NAO AGREGAR ENTRE NIVEIS: `public.vw_ft_dados_analiticos_union`
+# e as `detail_tables` abaixo (`ft_*_dados_analiticos`, `ft_somlivre_sonymusic`,
+# `warner_chappell.ft_warner_statement`) representam OS MESMOS EVENTOS em
+# niveis de granularidade diferentes. Somar/agregar valores da view unificada
+# junto com valores de uma detail_table (ou de duas detail_tables entre si)
+# DUPLICA receita/quantidade ja contabilizada. Usar a view unificada para
+# perguntas cross-plataforma/agregadas; usar UMA UNICA detail_table por vez
+# quando a pergunta pedir detalhe que a view nao tem (faixa, compositor,
+# territorio, ISRC, etc.).
+#
+# REGRA CRITICA — IGNORAR `vw_debug_*`: essas views existem apenas como etapa
+# de normalizacao de colunas para construir `vw_ft_dados_analiticos_union`
+# (cada plataforma tem nomes de coluna diferentes; vw_debug_* padroniza antes
+# da uniao). Nao sao fontes de dados para o agente.
 
 canonical_columns:
 
@@ -76,10 +91,22 @@ canonical_columns:
     type: NUMERIC
     source: public.vw_ft_dados_analiticos_union.revenue
 
+  cost:
+    description: >
+      Custo/despesa associada a linha — coluna nova desde 2026-07-01, ainda
+      nao exposta no catalogo semantico. Muito esparsa (2.768 de 10.3M
+      linhas em 2026-07-21) e observada SOMENTE para origem='Omie' (ERP
+      financeiro), cobrindo varios revenue_type (Shows, N/D, Publicidade,
+      Editora, Gravadora). Representa o lado "a pagar"/despesa do Omie,
+      distinto de `revenue` (lado recebido). Nao usar para outras origens —
+      sempre 0/nulo nelas nas amostras observadas.
+    type: NUMERIC
+    source: public.vw_ft_dados_analiticos_union.cost
+
   # --- Colunas presentes na view mas AINDA NAO expostas no catalogo semantico ---
   # (documentadas para referencia futura, nao usadas em mcp_server/query_builder.py)
   razao_social:
-    description: Razao social da entidade legal associada a linha (ex.: gravadora/empresa do artista).
+    description: "Razao social da entidade legal associada a linha (ex.: gravadora/empresa do artista)."
     type: TEXT
     source: public.vw_ft_dados_analiticos_union.razao_social
   origin_table:
@@ -95,6 +122,260 @@ canonical_columns:
     type: TEXT
     source: public.vw_ft_dados_analiticos_union.artist_raw
 
+# Tabelas de detalhe por plataforma/origem — dados "limpos" por plataforma
+# individual, usados para perguntas que pedem granularidade que a view
+# unificada nao tem (faixa, compositor, ISRC, territorio, etc.). Ver a REGRA
+# CRITICA no topo do arquivo sobre nao agregar com a view unificada.
+detail_tables:
+
+  public.ft_dsu_dados_analiticos:
+    description: Contratos e shows ao vivo (fonte de origem='DSU' na view unificada).
+    columns:
+      id: {type: INTEGER}
+      dt_cadastro: {type: DATE, description: Data de cadastro do contrato}
+      contrato: {type: TEXT, description: Identificador/numero do contrato}
+      artista: {type: TEXT}
+      uf: {type: TEXT, description: Estado do show}
+      cidade: {type: TEXT}
+      local: {type: TEXT, description: Nome do local/casa de show}
+      dt_show: {type: DATE, description: Data do show}
+      status: {type: TEXT, description: Status do contrato}
+      valor: {type: REAL, description: Valor bruto do contrato}
+      falta_receber: {type: REAL, description: Saldo ainda nao recebido}
+      valor_liquido: {type: REAL, description: Valor liquido do contrato}
+      periodo: {type: TEXT, description: "Periodo 'AAAA-MM', equivalente ao `period` da view unificada"}
+      source_file: {type: TEXT}
+
+  public.ft_omie_dados_analiticos:
+    description: >
+      Contas a pagar/receber do ERP Omie (fonte de origem='Omie' na view
+      unificada). 30 colunas — financeiro geral, nao especifico de
+      royalties/streaming.
+    columns:
+      id: {type: INTEGER}
+      minha_empresa_cnpj: {type: VARCHAR}
+      minha_empresa_razao_social: {type: VARCHAR}
+      minha_empresa_nome_fantasia: {type: VARCHAR}
+      tipo: {type: VARCHAR, description: Tipo de conta (a pagar/a receber)}
+      grupo: {type: VARCHAR}
+      categoria: {type: VARCHAR}
+      situacao: {type: VARCHAR}
+      departamento: {type: VARCHAR}
+      projeto: {type: VARCHAR, description: Projeto Omie — pode mapear a artista via `dim_artistas.omie_projeto`}
+      data_de_inclusao: {type: DATE}
+      data_de_vencimento: {type: DATE}
+      ultima_data_de_pagto_ou_recbto: {type: DATE}
+      dias_em_atraso: {type: INTEGER}
+      situacao_do_vencimento: {type: VARCHAR}
+      valor_da_conta: {type: NUMERIC}
+      valor_liquido: {type: NUMERIC}
+      juros: {type: NUMERIC}
+      multa: {type: NUMERIC}
+      desconto: {type: NUMERIC}
+      pago_ou_recebido: {type: NUMERIC}
+      a_pagar_ou_receber: {type: NUMERIC, description: "Provavel origem da coluna `cost` na view unificada"}
+      numero_do_documento: {type: VARCHAR}
+      parcela: {type: VARCHAR}
+      cnpjcpf: {type: VARCHAR}
+      cliente_ou_fornecedor_nome_fantasia: {type: VARCHAR}
+      cliente_ou_fornecedor_razao_social: {type: VARCHAR}
+      observacao_da_conta: {type: TEXT}
+      observacao_do_pagto_ou_recbto: {type: TEXT}
+      source_file: {type: TEXT}
+
+  public.ft_orchard_dados_analiticos:
+    description: >
+      Statement Orchard (fonte de origem='Orchard' na view unificada). Tem
+      detalhe de faixa (titulo_musica, ISRC) e territorio (pais) nao
+      presentes na view unificada.
+    columns:
+      razao_social: {type: TEXT}
+      apelido: {type: TEXT}
+      plataforma: {type: TEXT, description: "DSP/plataforma de streaming — nao existe na view unificada"}
+      tipo_receita: {type: TEXT}
+      id: {type: INTEGER}
+      nome_conta: {type: TEXT}
+      pais: {type: TEXT, description: "Territorio — nao existe na view unificada"}
+      loja: {type: TEXT, description: Loja/store de venda}
+      artista_produto: {type: TEXT}
+      produto: {type: TEXT, description: Album/release}
+      artista_musica: {type: TEXT}
+      titulo_musica: {type: TEXT, description: "Nome da faixa — nao existe na view unificada"}
+      isrc: {type: TEXT, description: "Codigo ISRC da faixa — nao existe na view unificada"}
+      moeda_conta: {type: CHAR}
+      periodo_relatorio: {type: TEXT}
+      quantidade: {type: INTEGER}
+      valor_liquido_moeda_conta: {type: NUMERIC}
+      matched_artista_keyword: {type: TEXT}
+      matched_artista_id: {type: INTEGER, description: FK para public.dim_artistas.id}
+      artist: {type: TEXT, description: Artista ja normalizado (mesmo padrao da view unificada)}
+
+  public.ft_somlivre_sonymusic:
+    description: >
+      Statement Som Livre/Sony Music. NAO confirmado se esta incluido em
+      `origem=` na view unificada (ver TODO.md item 1) — tratar como fonte
+      possivelmente separada ate confirmar.
+    columns:
+      rec_number: {type: INTEGER}
+      servico: {type: TEXT}
+      numero_da_conta: {type: TEXT}
+      nome_da_conta: {type: TEXT}
+      servico_conta: {type: TEXT}
+      data_extrato: {type: TEXT}
+      forma_de_distribuicao: {type: TEXT}
+      plataforma: {type: TEXT, description: DSP/plataforma}
+      numero_da_faixa: {type: TEXT}
+      artista_da_faixa: {type: TEXT}
+      nome_da_faixa: {type: TEXT, description: Nome da faixa}
+      unidades_de_pagamento: {type: INTEGER}
+      royalty_liquido: {type: REAL}
+
+  public.ft_universal_dados_analiticos:
+    description: >
+      Statement Universal Music (fonte de origem='Universal' na view
+      unificada). Tem detalhe de faixa e compositor.
+    columns:
+      razao_social: {type: TEXT}
+      apelido: {type: TEXT}
+      plataforma: {type: TEXT}
+      tipo_receita: {type: TEXT}
+      id: {type: INTEGER}
+      nome_conta: {type: TEXT}
+      data_extrato: {type: TEXT}
+      media: {type: TEXT}
+      canal: {type: TEXT}
+      codigo_musica: {type: TEXT, description: "FK textual para universal.dim_musica.codigo_musica"}
+      titulo_musica: {type: TEXT, description: "Nome da faixa — nao existe na view unificada"}
+      compositor: {type: TEXT, description: "Nome do compositor — nao existe na view unificada"}
+      unidades: {type: INTEGER}
+      royalties_a_pagar: {type: NUMERIC}
+      matched_artista_keyword: {type: TEXT}
+      matched_artista_id: {type: INTEGER}
+      artist: {type: TEXT}
+
+  public.ft_warner_chappell_dados_analiticos:
+    description: >
+      Versao simplificada do statement Warner Chappell (fonte de
+      origem='Warner Chappell' na view unificada). Preferir
+      `warner_chappell.ft_warner_statement` (11 vs 23 colunas) para analises
+      detalhadas — ver essa tabela abaixo.
+    columns:
+      id: {type: INTEGER}
+      data_extrato: {type: TEXT}
+      source_territory_name: {type: TEXT, description: Territorio}
+      tango_income_type_name: {type: TEXT}
+      descricao_canal: {type: TEXT}
+      source_work_id: {type: TEXT, description: ID da obra musical (work)}
+      tango_work_code: {type: TEXT}
+      tango_work_title: {type: TEXT, description: Titulo da obra}
+      creator_names: {type: TEXT, description: Nomes dos criadores/compositores}
+      units: {type: INTEGER}
+      amount_paid_less_tax: {type: NUMERIC}
+
+  public.ft_warner_music_dados_analiticos:
+    description: >
+      Statement Warner Music (fonte de origem='Warner Music' na view
+      unificada). Tem detalhe de faixa, DSP e territorio.
+    columns:
+      id: {type: INTEGER}
+      account: {type: TEXT}
+      account_name: {type: TEXT}
+      recdate_month_id: {type: TEXT}
+      repdate_month_id: {type: TEXT}
+      country: {type: TEXT, description: "Territorio — nao existe na view unificada"}
+      location: {type: TEXT}
+      config_type: {type: TEXT}
+      dist_chan_desc: {type: TEXT}
+      digital_service_provider_dsp: {type: TEXT, description: "DSP/plataforma — nao existe na view unificada"}
+      isrc: {type: TEXT}
+      tune_title: {type: TEXT, description: "Nome da faixa — nao existe na view unificada"}
+      artist_name: {type: TEXT}
+      sale_units: {type: INTEGER}
+      price: {type: NUMERIC}
+      exch_rate: {type: NUMERIC, description: Taxa de cambio}
+      royalty_payable: {type: NUMERIC}
+      payee: {type: TEXT}
+      source_file: {type: TEXT}
+      line_number: {type: INTEGER}
+
+  warner_chappell.ft_warner_statement:
+    description: >
+      Statement Warner Chappell RAW/completo (23 colunas — bem mais rico
+      que `public.ft_warner_chappell_dados_analiticos`, 11 colunas). Tem
+      breakdown fiscal (rate_percentage, tax_rate, withholding_tax) e
+      detalhe de obra (work)/compositor. Preferir esta tabela para analises
+      detalhadas do lado Warner Chappell.
+    columns:
+      id: {type: INTEGER}
+      data_extrato: {type: TEXT}
+      statement_id: {type: TEXT}
+      source_territory_name: {type: TEXT}
+      source_income_type: {type: TEXT}
+      tango_income_type_name: {type: TEXT}
+      income_provider_name: {type: TEXT}
+      exploitation_source: {type: TEXT, description: "FK textual para warner_chappell.dim_exploitation_source"}
+      product_description: {type: TEXT}
+      source_work_id: {type: TEXT}
+      tango_work_code: {type: TEXT}
+      tango_work_title: {type: TEXT}
+      creator_names: {type: TEXT}
+      composer: {type: TEXT}
+      units: {type: INTEGER}
+      amount_received: {type: NUMERIC}
+      rate_percentage: {type: NUMERIC, description: Percentual de repasse aplicado}
+      amount_paid: {type: NUMERIC}
+      tax_rate: {type: NUMERIC}
+      withholding_tax: {type: NUMERIC}
+      amount_paid_less_tax: {type: NUMERIC}
+      row_hash: {type: CHAR}
+      inserted_at: {type: TIMESTAMPTZ}
+
+  universal.dim_musica:
+    description: Dimensao de faixas/musicas da Universal.
+    columns:
+      musica_id: {type: BIGINT}
+      codigo_musica: {type: TEXT, description: "FK para ft_universal_dados_analiticos.codigo_musica"}
+      titulo_da_musica: {type: TEXT}
+      compositor: {type: TEXT}
+      numero_catalogo: {type: TEXT}
+      updated_at: {type: TIMESTAMPTZ}
+
+  universal.dim_compositor:
+    description: Dimensao de compositores da Universal.
+    columns:
+      compositor_id: {type: BIGINT}
+      codigo_compositor: {type: TEXT}
+      nome_compositor: {type: TEXT}
+      updated_at: {type: TIMESTAMPTZ}
+
+  public.dim_artistas:
+    description: >
+      Dimensao de artistas/titulares de direitos — enriquecimento via join
+      com `matched_artista_id` (presente na view unificada e em varias
+      detail_tables).
+    columns:
+      id: {type: INTEGER}
+      cpf: {type: VARCHAR}
+      nome_civil: {type: TEXT}
+      nome_artistico: {type: TEXT}
+      natureza: {type: TEXT}
+      ativo: {type: BOOLEAN}
+      spotify_artist_id: {type: VARCHAR}
+      pseudonimos: {type: ARRAY}
+      observacoes: {type: TEXT}
+      gravadora: {type: TEXT, description: Label/gravadora do artista}
+      cnpj_gravadora: {type: VARCHAR}
+      razao_social_gravadora: {type: TEXT}
+      artista_keyword: {type: TEXT}
+      dsu_artista: {type: TEXT, description: "Nome usado no DSU (ver ft_dsu_dados_analiticos.artista)"}
+      omie_projeto: {type: TEXT, description: "Projeto Omie (ver ft_omie_dados_analiticos.projeto)"}
+      cod_onerpm: {type: TEXT}
+      orchard_product_artist: {type: ARRAY}
+      cod_sony: {type: TEXT}
+      universal_compositor: {type: TEXT}
+      warner_chappel_deal_scope_name: {type: ARRAY}
+      warner_music_artist_name: {type: TEXT}
+
 tables:
   public:
     - vw_ft_dados_analiticos_union   # view unificada (query_source atual)
@@ -106,42 +387,42 @@ tables:
     - dim_omie_categoria
     - dim_omie_grupo
     - ft_dsu_controle_contratos
-    - ft_dsu_dados_analiticos          # fonte de origem='DSU' na view unificada
+    - ft_dsu_dados_analiticos          # fonte de origem='DSU' na view unificada — ver detail_tables
     - ft_dsu_shows_logs
-    - ft_omie_dados_analiticos         # fonte de origem='Omie' na view unificada
-    - ft_orchard_dados_analiticos      # fonte de origem='Orchard' na view unificada
-    - ft_somlivre_sonymusic            # NAO observado em origem= (verificar se esta incluido na view)
-    - ft_universal_dados_analiticos    # fonte de origem='Universal' na view unificada
-    - ft_warner_chappell_dados_analiticos  # fonte de origem='Warner Chappell' na view unificada
-    - ft_warner_music_dados_analiticos # fonte de origem='Warner Music' na view unificada
+    - ft_omie_dados_analiticos         # fonte de origem='Omie' na view unificada — ver detail_tables
+    - ft_orchard_dados_analiticos      # fonte de origem='Orchard' na view unificada — ver detail_tables
+    - ft_somlivre_sonymusic            # NAO confirmado em origem= — ver detail_tables e TODO.md item 1
+    - ft_universal_dados_analiticos    # fonte de origem='Universal' na view unificada — ver detail_tables
+    - ft_warner_chappell_dados_analiticos  # fonte de origem='Warner Chappell' — ver detail_tables (preferir warner_chappell.ft_warner_statement)
+    - ft_warner_music_dados_analiticos # fonte de origem='Warner Music' na view unificada — ver detail_tables
     - stg_omie_consolidado
     - stg_orchard_revenue               # + variantes stg_orchard_revenue_YYYY_MM (particionado por mes)
     - stg_somlivre_sonymusic
     - stg_warner_music_details
-    - vw_debug_dsu_dados_analiticos
-    - vw_debug_omie_dados_analiticos
-    - vw_debug_orchard_dados_analiticos
-    - vw_debug_universal_dados_analiticos
-    - vw_debug_warner_chappell_dados_analiticos
-    - vw_debug_warner_music_dados_analiticos
+    - vw_debug_dsu_dados_analiticos               # IGNORAR — etapa de normalizacao, ver regra critica no topo
+    - vw_debug_omie_dados_analiticos              # IGNORAR
+    - vw_debug_orchard_dados_analiticos           # IGNORAR
+    - vw_debug_universal_dados_analiticos         # IGNORAR
+    - vw_debug_warner_chappell_dados_analiticos   # IGNORAR
+    - vw_debug_warner_music_dados_analiticos      # IGNORAR
   universal:
     - dim_cliente
-    - dim_compositor
+    - dim_compositor    # ver detail_tables
     - dim_fonte
     - dim_grupo_renda
     - dim_magmedia_fields
-    - dim_musica
+    - dim_musica        # ver detail_tables
     - dim_tipo_renda
     - stg_universal_magmedia
   warner_chappell:
     - dim_exploitation_source
-    - ft_warner_statement
+    - ft_warner_statement   # ver detail_tables — preferir a public.ft_warner_chappell_dados_analiticos
     - stg_warner_statement
     - stg_warner_statement_old
 
 data_quality_notes:
   public.vw_ft_dados_analiticos_union:
-    - "10.3M linhas em 2026-07-01 (select count(*))."
+    - "10.3M linhas em 2026-07-01 (select count(*)); nao recontado em 2026-07-21."
     - "period/revenue_period sao TEXT em grao mensal ('AAAA-MM'), identicos em
        todas as amostras observadas — nao ha granularidade diaria nesta view."
     - "origem inclui 'Omie' (ERP financeiro geral) e 'DSU' (shows ao vivo),
@@ -155,11 +436,15 @@ data_quality_notes:
     - "ft_somlivre_sonymusic nao apareceu nos valores distintos de origem
        observados na amostra inicial — confirmar se esta incluida na view
        ou se e uma fonte separada ainda nao unificada."
+    - "coluna `cost` adicionada desde 2026-07-01: muito esparsa (2.768/10.3M
+       linhas), so observada para origem='Omie'. Ver canonical_columns.cost."
+    - "NAO agregar com nenhuma detail_table (ver regra critica no topo do
+       arquivo) — duplicaria valores ja contabilizados na uniao."
   universal:
-    - "Schema de detalhe (dim_musica, dim_compositor, stg_universal_magmedia)
-       ainda nao consultado pelo agente — apenas a fact table unificada em
-       `public` e usada hoje."
+    - "dim_musica e dim_compositor documentadas em detail_tables — uteis
+       para enriquecer analises por faixa/compositor a partir de
+       ft_universal_dados_analiticos.codigo_musica/compositor."
   warner_chappell:
-    - "Schema de detalhe (ft_warner_statement, stg_warner_statement) ainda
-       nao consultado pelo agente — apenas a fact table unificada em
-       `public` e usada hoje."
+    - "ft_warner_statement (23 colunas, documentada em detail_tables) e bem
+       mais rica que a equivalente em public (ft_warner_chappell_dados_analiticos,
+       11 colunas) — preferir a primeira para analises detalhadas."

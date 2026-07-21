@@ -1,40 +1,295 @@
 # Catalogo semantico do agente KOND (royalties de artistas).
 #
-# STATUS: VALIDADO contra o banco real em 2026-07-01. Fonte:
-# public.vw_ft_dados_analiticos_union (ver config/postgres_sources.yml e
-# config/column_dictionary.yml para o detalhe completo, incluindo notas de
-# qualidade de dados).
+# STATUS: VALIDADO contra o banco real em 2026-07-21. Multiplas fontes
+# (sources), cada uma mapeada a um schema.tabela em
+# config/postgres_sources.yml::logical_sources (mesma chave). Cada fonte
+# declara seus proprios metrics/dimensions, com `expression_hint` resolvendo
+# para a coluna real (ou expressao SQL) naquela tabela especifica — nomes de
+# coluna variam muito entre plataformas (ex.: artista e `artista` no DSU,
+# `artist` na Orchard/Universal, `artist_name` na Warner Music,
+# `creator_names` na Warner Chappell).
+#
+# `royalty_performance` (a view unificada) e a fonte padrao — usar para
+# perguntas cross-plataforma/agregadas por artista+periodo+origem+tipo de
+# receita. As demais fontes (`*_detail`) sao dados "limpos" de UMA
+# plataforma especifica, usados quando a pergunta pede granularidade que a
+# view unificada nao tem (faixa, compositor, ISRC, territorio, DSP, etc.).
+#
+# REGRA CRITICA: nunca combinar/agregar `royalty_performance` com uma
+# `*_detail`, nem duas `*_detail` entre si, na mesma consulta — sao os
+# mesmos eventos em granularidades diferentes (duplicaria valores). Ver
+# config/column_dictionary.yml para o detalhe completo.
 
-metrics:
-  quantity:
-    label: Quantidade
+sources:
+
+  royalty_performance:
+    default: true
     description: >
-      Quantidade associada a linha. O significado varia por origem/tipo de
-      receita (streams, unidades vendidas, contagem de shows, etc.) — ver
-      config/column_dictionary.yml.
-    expression_hint: sum(quantity)
-  revenue:
-    label: Receita
-    description: Valor monetario (receita/royalty) associado a linha.
-    expression_hint: sum(revenue)
+      View unificada de performance de royalties/receita por artista,
+      periodo (mes), origem (sistema/distribuidora) e tipo de receita.
+      Cobre streaming/publishing/master (Orchard, Universal, Warner
+      Chappell, Warner Music), shows ao vivo (DSU) e financeiro/ERP (Omie).
+      Fonte padrao para perguntas cross-plataforma/agregadas. Nao tem
+      dimensao de faixa/musica/compositor/ISRC/territorio — usar uma fonte
+      `*_detail` quando a pergunta pedir esse nivel de detalhe.
+    metrics:
+      quantity:
+        label: Quantidade
+        description: >
+          Quantidade associada a linha. O significado varia por
+          origem/tipo de receita (streams, unidades vendidas, contagem de
+          shows, etc.) — ver config/column_dictionary.yml.
+        expression_hint: sum(quantity)
+      revenue:
+        label: Receita
+        description: Valor monetario (receita/royalty) associado a linha.
+        expression_hint: sum(revenue)
+      cost:
+        label: Custo
+        description: >
+          Custo/despesa associado a linha. Muito esparso, observado apenas
+          para origem='Omie' — ver config/column_dictionary.yml.
+        expression_hint: sum(cost)
+    dimensions:
+      period:
+        label: Periodo
+        description: Mes de referencia, formato 'AAAA-MM' (grao mensal, nao diario).
+      artist:
+        label: Artista
+        description: Nome do artista normalizado (casado contra o cadastro de artistas).
+      origem:
+        label: Origem
+        description: >
+          Sistema/distribuidora de origem da linha (DSU, Omie, Orchard,
+          Universal, Warner Chappell, Warner Music).
+      revenue_type:
+        label: Tipo de receita
+        description: Categoria da receita (Editora, Gravadora, Publicidade, Shows, N/D).
 
-dimensions:
-  period:
-    label: Periodo
-    description: Mes de referencia, formato 'AAAA-MM' (grao mensal, nao diario).
-  artist:
-    label: Artista
-    description: Nome do artista normalizado (casado contra o cadastro de artistas).
-  origem:
-    label: Origem
+  dsu_detail:
     description: >
-      Sistema/distribuidora de origem da linha (DSU, Omie, Orchard,
-      Universal, Warner Chappell, Warner Music).
-  revenue_type:
-    label: Tipo de receita
-    description: Categoria da receita (Editora, Gravadora, Publicidade, Shows, N/D).
+      Contratos e shows ao vivo (DSU). Sem dimensao de faixa/musica —
+      artista e data apenas, mais detalhe de local/evento.
+    metrics:
+      revenue:
+        label: Receita
+        expression_hint: sum(valor_liquido)
+      shows:
+        label: Shows
+        description: Numero de shows/contratos (contagem de linhas).
+        expression_hint: count(*)
+    dimensions:
+      period:
+        label: Periodo
+      artist:
+        label: Artista
+        expression_hint: artista
+        description: "Nome bruto do artista — sem match contra dim_artistas."
+      territory:
+        label: UF
+        expression_hint: uf
+      city:
+        label: Cidade
+        expression_hint: cidade
+      venue:
+        label: Local
+        expression_hint: local
+      status:
+        label: Status
+        expression_hint: status
 
-# Fonte aprovada para consulta. Hoje o agente le uma unica view ja
-# consolidada entre distribuidoras (ver config/postgres_sources.yml::query_source).
+  omie_detail:
+    description: >
+      Financeiro/ERP Omie (contas a pagar/receber). Sem dimensao de
+      faixa/musica; artista e apenas um proxy (projeto Omie), nao
+      normalizado.
+    metrics:
+      revenue:
+        label: Valor liquido
+        expression_hint: sum(valor_liquido)
+      payable:
+        label: A pagar/receber
+        expression_hint: sum(a_pagar_ou_receber)
+    dimensions:
+      period:
+        label: Periodo
+        description: >
+          Derivado de `data_de_vencimento` (coluna DATE real, diferente do
+          formato TEXT 'AAAA-MM' das demais fontes).
+        expression_hint: "to_char(data_de_vencimento, 'YYYY-MM')"
+      artist:
+        label: Projeto (proxy de artista)
+        expression_hint: projeto
+        description: "Projeto Omie — proxy para artista, NAO normalizado contra dim_artistas."
+      category:
+        label: Categoria
+        expression_hint: categoria
+      type:
+        label: Tipo
+        expression_hint: tipo
+
+  orchard_detail:
+    description: >
+      Reproducoes digitais Orchard. Tem faixa, ISRC, territorio e DSP —
+      ausentes na view unificada.
+    metrics:
+      revenue:
+        label: Receita
+        expression_hint: sum(valor_liquido_moeda_conta)
+      quantity:
+        label: Quantidade
+        expression_hint: sum(quantidade)
+    dimensions:
+      period:
+        label: Periodo
+        expression_hint: periodo_relatorio
+      artist:
+        label: Artista
+      track:
+        label: Faixa
+        expression_hint: titulo_musica
+      isrc:
+        label: ISRC
+      territory:
+        label: Territorio
+        expression_hint: pais
+      platform:
+        label: Plataforma
+        expression_hint: plataforma
+      revenue_type:
+        label: Tipo de receita
+        expression_hint: tipo_receita
+
+  somlivre_detail:
+    description: >
+      Reproducoes digitais Som Livre/Sony Music. Tem faixa — ausente na
+      view unificada. Cobertura na view unificada nao confirmada (ver
+      TODO.md item 1).
+    metrics:
+      revenue:
+        label: Royalty liquido
+        expression_hint: sum(royalty_liquido)
+      quantity:
+        label: Quantidade
+        expression_hint: sum(unidades_de_pagamento)
+    dimensions:
+      period:
+        label: Periodo
+        expression_hint: data_extrato
+      artist:
+        label: Artista
+        expression_hint: artista_da_faixa
+        description: "Nome bruto — sem match contra dim_artistas."
+      track:
+        label: Faixa
+        expression_hint: nome_da_faixa
+      platform:
+        label: Plataforma
+        expression_hint: plataforma
+
+  universal_detail:
+    description: >
+      Reproducoes digitais Universal Music. Tem faixa e compositor —
+      ausentes na view unificada.
+    metrics:
+      revenue:
+        label: Royalties a pagar
+        expression_hint: sum(royalties_a_pagar)
+      quantity:
+        label: Unidades
+        expression_hint: sum(unidades)
+    dimensions:
+      period:
+        label: Periodo
+        expression_hint: data_extrato
+      artist:
+        label: Artista
+      track:
+        label: Faixa
+        expression_hint: titulo_musica
+      composer:
+        label: Compositor
+        expression_hint: compositor
+      platform:
+        label: Plataforma
+        expression_hint: plataforma
+      revenue_type:
+        label: Tipo de receita
+        expression_hint: tipo_receita
+
+  warner_chappell_detail:
+    description: >
+      Statement Warner Chappell (publishing), tabela completa
+      (warner_chappell.ft_warner_statement). Tem obra (work), compositor e
+      territorio — ausentes na view unificada.
+    metrics:
+      revenue:
+        label: Valor pago (liquido de impostos)
+        expression_hint: sum(amount_paid_less_tax)
+      quantity:
+        label: Quantidade
+        expression_hint: sum(units)
+    dimensions:
+      period:
+        label: Periodo
+        expression_hint: data_extrato
+      artist:
+        label: Criadores
+        expression_hint: creator_names
+        description: "Nomes dos criadores (raw, pode conter mais de um nome em uma linha)."
+      track:
+        label: Obra
+        expression_hint: tango_work_title
+      composer:
+        label: Compositor
+        expression_hint: composer
+      territory:
+        label: Territorio
+        expression_hint: source_territory_name
+      revenue_type:
+        label: Tipo de receita
+        expression_hint: tango_income_type_name
+
+  warner_music_detail:
+    description: >
+      Reproducoes digitais Warner Music. Tem faixa, ISRC, DSP e territorio
+      — ausentes na view unificada.
+    metrics:
+      revenue:
+        label: Royalty a pagar
+        expression_hint: sum(royalty_payable)
+      quantity:
+        label: Unidades vendidas
+        expression_hint: sum(sale_units)
+    dimensions:
+      period:
+        label: Periodo
+        description: "Mes de recebimento (`recdate_month_id`). Existe tambem `repdate_month_id` (mes de reporte)."
+        expression_hint: recdate_month_id
+      artist:
+        label: Artista
+        expression_hint: artist_name
+        description: "Nome bruto — sem match contra dim_artistas."
+      track:
+        label: Faixa
+        expression_hint: tune_title
+      isrc:
+        label: ISRC
+      territory:
+        label: Territorio
+        expression_hint: country
+      platform:
+        label: DSP
+        expression_hint: digital_service_provider_dsp
+
+# Fontes aprovadas para consulta — cada chave corresponde a uma entrada em
+# config/postgres_sources.yml::logical_sources com o mesmo nome.
 approved_sources:
-  - public.vw_ft_dados_analiticos_union
+  - royalty_performance
+  - dsu_detail
+  - omie_detail
+  - orchard_detail
+  - somlivre_detail
+  - universal_detail
+  - warner_chappell_detail
+  - warner_music_detail

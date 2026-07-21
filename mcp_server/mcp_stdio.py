@@ -79,6 +79,14 @@ TOOLS = [
             "properties": {
                 "question": {"type": "string"},
                 "limit": {"type": "integer", "minimum": 1, "default": 100},
+                "source": {
+                    "type": "string",
+                    "description": (
+                        "Fonte a consultar (ver `get_royalty_catalog`). Se omitido, e "
+                        "inferida da pergunta, com fallback para 'royalty_performance' "
+                        "(view unificada cross-plataforma)."
+                    ),
+                },
             },
             "required": ["question"],
             "additionalProperties": False,
@@ -93,6 +101,14 @@ TOOLS = [
             "properties": {
                 "question": {"type": "string"},
                 "limit": {"type": "integer", "minimum": 1, "default": 100},
+                "source": {
+                    "type": "string",
+                    "description": (
+                        "Fonte a consultar (ver `get_royalty_catalog`). Se omitido, e "
+                        "inferida da pergunta, com fallback para 'royalty_performance' "
+                        "(view unificada cross-plataforma)."
+                    ),
+                },
             },
             "required": ["question"],
             "additionalProperties": False,
@@ -107,6 +123,16 @@ TOOLS = [
             "properties": {
                 "question": {"type": "string"},
                 "limit": {"type": "integer", "minimum": 1, "default": 100},
+                "source": {
+                    "type": "string",
+                    "description": (
+                        "Fonte a consultar (ver `get_royalty_catalog`). Se omitido, e "
+                        "inferida da pergunta, com fallback para 'royalty_performance' "
+                        "(view unificada cross-plataforma). Use uma fonte de detalhe "
+                        "(`*_detail`) para perguntas sobre faixa/musica/compositor/ISRC/"
+                        "territorio de uma plataforma especifica."
+                    ),
+                },
             },
             "required": ["question"],
             "additionalProperties": False,
@@ -193,15 +219,19 @@ def _handle_tool_call(message_id: Any, params: dict[str, Any]) -> dict[str, Any]
             result = _text_result(payload, is_error=payload.get("status") == "error")
         elif tool_name == "plan_royalty_query":
             question = arguments["question"]
-            payload = get_plan_payload(question=question, limit=_coerce_limit(arguments))
+            payload = get_plan_payload(question=question, limit=_coerce_limit(arguments), source=arguments.get("source"))
             result = _text_result(payload)
         elif tool_name == "run_royalty_query":
             question = arguments["question"]
-            status_code, payload = get_run_query_payload(question=question, limit=_coerce_limit(arguments))
+            status_code, payload = get_run_query_payload(
+                question=question, limit=_coerce_limit(arguments), source=arguments.get("source")
+            )
             result = _text_result(payload, is_error=status_code != 0)
         elif tool_name == "ask_royalties":
             question = arguments["question"]
-            status_code, payload = get_ask_payload(question=question, limit=_coerce_limit(arguments))
+            status_code, payload = get_ask_payload(
+                question=question, limit=_coerce_limit(arguments), source=arguments.get("source")
+            )
             result = _text_result(payload, is_error=status_code != 0)
         else:
             raise ValueError(f"Tool sem implementacao: {tool_name}")

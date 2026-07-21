@@ -38,12 +38,15 @@ def build_parser() -> argparse.ArgumentParser:
     plan_parser = subparsers.add_parser("plan-query", help="Planeja uma consulta sem executa-la.")
     plan_parser.add_argument("--question", required=True)
     plan_parser.add_argument("--limit", type=int, default=100)
+    plan_parser.add_argument("--source", default=None, help="Fonte a consultar (ver comando 'catalog'). Se omitido, e inferida da pergunta.")
     run_parser = subparsers.add_parser("run-query", help="Executa uma consulta de royalties no Postgres.")
     run_parser.add_argument("--question", required=True)
     run_parser.add_argument("--limit", type=int, default=100)
+    run_parser.add_argument("--source", default=None, help="Fonte a consultar (ver comando 'catalog'). Se omitido, e inferida da pergunta.")
     ask_parser = subparsers.add_parser("ask", help="Executa a consulta e devolve resposta executiva.")
     ask_parser.add_argument("--question", required=True)
     ask_parser.add_argument("--limit", type=int, default=100)
+    ask_parser.add_argument("--source", default=None, help="Fonte a consultar (ver comando 'catalog'). Se omitido, e inferida da pergunta.")
     return parser
 
 
@@ -71,13 +74,13 @@ def main() -> None:
         port = int(os.environ.get("PORT", "8080"))
         raise SystemExit(run_http(host="0.0.0.0", port=port))
     if args.command == "plan-query":
-        raise SystemExit(_emit(get_plan_payload(args.question, args.limit)))
+        raise SystemExit(_emit(get_plan_payload(args.question, args.limit, source=args.source)))
     if args.command == "run-query":
-        status_code, payload = get_run_query_payload(args.question, args.limit)
+        status_code, payload = get_run_query_payload(args.question, args.limit, source=args.source)
         _emit(payload)
         raise SystemExit(status_code)
     if args.command == "ask":
-        status_code, payload = get_ask_payload(args.question, args.limit)
+        status_code, payload = get_ask_payload(args.question, args.limit, source=args.source)
         _emit(payload)
         raise SystemExit(status_code)
 
