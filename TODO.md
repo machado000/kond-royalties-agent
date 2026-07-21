@@ -93,7 +93,15 @@ Universal, Warner Chappell, Warner Music).
 19. [ ] Rotina de rotacao do token em `MCP_API_KEYS` (`kern-data:~/kond-royalties-mcp/.env`)
 20. [ ] Rotina de rotacao do client secret Auth0 (Application "Claude" no
     tenant `dev-paer1atuombl2qf5.us.auth0.com`)
-21. [ ] Testar `ask_royalties` com dados reais atraves do conector
-    conectado no claude.ai (ate agora validado apenas
-    `tools/list`/`resources/list`/`prompts/list` — falta confirmar um
-    `tools/call` real retornando dados corretos pelo fluxo OAuth)
+21. [x] Testar `ask_royalties` com dados reais atraves do conector
+    conectado no claude.ai — confirmado (2026-07-21), resposta correta com
+    dados reais de receita por artista
+22. [x] Script de deploy rapido (`scripts/deploy.sh`): sincroniza codigo
+    para `kern-data`, reconstroi a imagem, reinicia o container e roda
+    smoke tests (metadados RFC 9728, token estatico, opcionalmente
+    `ask_royalties` com uma pergunta real via `scripts/deploy.sh "pergunta"`)
+23. [ ] Atualizar `config/postgres_sources.yml`, `config/column_dictionary.yml`
+    e `semantic_catalog/catalog.yml` com novas tabelas/campos do schema
+    (planejado para uma proxima sessao) — testes serao feitos direto no
+    container de producao via `scripts/deploy.sh`, ja que o projeto nao e
+    critico

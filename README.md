@@ -5,7 +5,7 @@ V1 simplificada do agente analitico da KOND.
 Arquitetura:
 
 - agente customizado
-- servidor MCP (stdio para dev local, Streamable HTTP para producao)
+- servidor MCP (Streamable HTTP para producao)
 - Postgres (multiplos schemas) como fonte principal
 - catalogo semantico em PT-BR
 - relatorios em PDF como artefatos
@@ -24,8 +24,7 @@ Responder perguntas de performance de royalties de artistas com:
 - Postgres direto (uma conexao, varios schemas via `search_path`)
 - sem frontend proprio
 - foco em MCP + prompts + artefatos
-- hospedagem compartilhada em producao (Docker + Caddy + OAuth), nao apenas
-  uso local
+- hospedagem compartilhada em producao (Docker + Caddy + OAuth)
 
 ## Estrutura
 
@@ -56,6 +55,18 @@ O servidor roda como container Docker expondo o transporte Streamable HTTP
 Caddy que ja atende outros servicos no mesmo host. Isso permite que varias
 pessoas/clientes usem o agente sem cada um precisar de credenciais de
 Postgres localmente.
+
+### Deploy rapido
+
+```bash
+scripts/deploy.sh
+scripts/deploy.sh "Como foi a receita por artista nos ultimos 90 dias?"  # + testa ask_royalties
+```
+
+Sincroniza o codigo para `kern-data`, reconstroi a imagem, reinicia o
+container e roda smoke tests (metadados RFC 9728, token estatico, e
+opcionalmente um `ask_royalties` real se uma pergunta for passada). Nao
+toca no `.env` remoto nem no Caddyfile.
 
 ### Imagem e container
 
