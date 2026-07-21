@@ -1,73 +1,69 @@
 # Notas De Arquitetura
 
-## Direcao escolhida
+## Direcao atual
 
-A direcao atual da V1 e minimalista:
-
+- servidor MCP com dois transportes: `stdio` (dev local) e Streamable HTTP
+  (`serve-http`, producao)
+- producao roda em Docker atras de Caddy, com autenticacao obrigatoria
+  (Bearer estatico e/ou OAuth 2.1 delegado a um IdP externo)
+- Postgres direto (uma conexao, varios schemas via `search_path`)
+- resposta em PT-BR via OpenAI, com fallback deterministico
+- sem ETL proprio neste repositorio (schemas alimentados por pipeline
+  externo)
 - sem frontend proprio
-- sem sync local
-- sem interface inspirada no ChatGPT
-- sem camada visual web nesta fase
-- sem ETL proprio neste repositorio (schemas `raw`/`silver`/`marts` sao
-  alimentados por um pipeline externo)
-
-Objetivo:
-
-- usar um agente customizado do Codex ou equivalente
-- conectar tools via MCP
-- consultar Postgres diretamente (uma conexao, varios schemas)
-- responder em PT-BR com OpenAI
-- gerar artefatos quando necessario
-
-## Racional
-
-- o custo de manter frontend, sync, cache local e camada analitica ao mesmo tempo ficou alto demais para a V1
-- a base mais util agora e semantica + query controlada + resposta executiva
-- isso reduz superficie tecnica e acelera a primeira entrega validavel
 
 ## Migracao de dominio (2026-07-01)
 
 Este repositorio comecou como um agente de marketing analytics sobre
-BigQuery (GA4/Google Ads/Facebook Ads, multiplos datasets/projetos). Foi
-refatorado para um agente de performance de royalties de artistas sobre
-Postgres. Principais mudancas:
+BigQuery (GA4/Google Ads/Facebook Ads). Foi refatorado para um agente de
+performance de royalties de artistas sobre Postgres — ver `TODO.md` e
+`config/column_dictionary.yml` para o schema real validado.
 
-- BigQuery multi-projeto/multi-dataset -> Postgres com um `DATABASE_URL` e
-  varios schemas via `search_path` (`POSTGRES_SCHEMAS`)
-- consulta com UNION ALL entre plataformas de marketing heterogeneas ->
-  consulta simples contra uma unica tabela/view de analise (`marts.*`)
-- tool de listagem de datasets do BigQuery -> tool generica
-  `describe_schema`, que introspecta tabelas/colunas via
-  `information_schema` (nao depende de dicionario mantido a mao para
-  descobrir o schema)
-- metricas/dimensoes de marketing (receita, spend, ROAS, canal, campanha) ->
-  metricas/dimensoes de royalties (streams, unidades, receita, royalties,
-  artista, faixa, album, plataforma/DSP, territorio)
-- ETL bronze/silver de GA4 (`etl/*.sql`) removido — nao se aplica ao novo
-  dominio
+## Deploy remoto e OAuth (2026-07-16 a 2026-07-20)
 
-## Fontes reais usadas pela V1 (ATUAL)
+O servidor ganhou um segundo transporte (`mcp_server/mcp_http.py`,
+Streamable HTTP) portado da versao anterior sobre BigQuery, e foi
+deployado em Docker em `kern-data`, atras do Caddy que tambem atende o
+Prefect nesse host. Duas camadas de autenticacao coexistem no mesmo
+processo (`mcp_server/oauth.py`):
 
-Ainda nao confirmadas. `config/postgres_sources.yml` e
-`config/column_dictionary.yml` descrevem um modelo provisorio
-(`marts.royalty_performance`) ate que um `DATABASE_URL` real esteja
-disponivel e `describe-schema` seja executado. Ver `TODO.md` na raiz do
-repositorio para o passo a passo de validacao.
+- token Bearer estatico (`MCP_API_KEYS`) — caminho simples, sem IdP
+- OAuth 2.1 delegado a um IdP externo — necessario para o conector remoto
+  do claude.ai, que exige o fluxo OAuth completo (nao aceita so um header
+  estatico via configuracao normal)
 
-## Normalizacao atual (provisoria)
+**WorkOS AuthKit foi tentado primeiro e abandonado.** A conexao,
+descoberta RFC 9728/8414, DCR e o login/consentimento funcionavam, mas o
+*token exchange* falhava consistentemente com `invalid_target` — testado
+com Dynamic Client Registration ligado e desligado, com app recriada do
+zero, com e sem `localhost` registrado como resource indicator adicional,
+sempre com a mesma assinatura (nenhuma requisicao autenticada chegava ao
+servidor). Pesquisa em issues publicas do `anthropics/claude-ai-mcp`
+mostrou multiplos relatos identicos especificamente com WorkOS AuthKit; a
+causa raiz nao foi isolada do nosso lado antes de trocar de provedor.
 
-A tabela/view de analise configurada assume colunas:
+**Auth0 foi adotado no lugar e funcionou.** Detalhe critico: Auth0 ignora
+silenciosamente o parametro `resource` (RFC 8707) que o claude.ai envia, a
+menos que o toggle **Resource Parameter Compatibility Profile** esteja
+habilitado em Settings → Advanced (tenant-wide) — sem isso, cai no
+comportamento legado baseado em `audience` e o sintoma seria identico ao
+do WorkOS. Ver README.md para o passo a passo completo.
 
-- `date`
-- `artist`
-- `track`
-- `release`
-- `platform`
-- `territory`
-- `streams`
-- `units`
-- `revenue`
-- `royalties`
+Dois bugs reais corrigidos durante a integracao (nao especificos de
+nenhum provedor):
+
+- o JWKS URL era derivado por um path hardcoded (`/oauth2/jwks`,
+  convencao do WorkOS) em vez de OpenID Connect Discovery — quebraria
+  silenciosamente com qualquer outro IdP
+- o claim `iss` do token era comparado contra uma normalizacao propria
+  (barra final sempre removida) em vez do valor `issuer` auto-declarado
+  pelo IdP na descoberta OIDC — WorkOS nao usa barra final, Auth0 usa;
+  a normalizacao propria teria rejeitado todo token Auth0 valido
+
+Ambos corrigidos em `mcp_server/oauth.py` usando descoberta OIDC padrao
+(`{issuer}/.well-known/openid-configuration`) para tanto o `jwks_uri`
+quanto o `issuer` de referencia — o codigo hoje e generico o suficiente
+para qualquer IdP compativel, nao apenas Auth0.
 
 ## Limites conhecidos
 
@@ -76,9 +72,8 @@ A tabela/view de analise configurada assume colunas:
 - ainda nao existe geracao de PDF
 - ainda nao existem tools MCP para relatorio (`generate_royalty_report` pendente)
 - ainda nao existe camada de artefatos visuais alem da sugestao estruturada
-- schema real do Postgres de royalties ainda nao foi introspectado/validado
 
 ## Decisao importante
 
-O comando `config` foi ajustado para nao expor `OPENAI_API_KEY` nem
-`DATABASE_URL` (ambos redigidos na saida).
+O comando `config` foi ajustado para nao expor segredos (`OPENAI_API_KEY`,
+`DATABASE_URL`, `pg_password`) — todos redigidos na saida.

@@ -94,3 +94,11 @@ Saida:
 - sem SQL livre exposto ao usuario final
 - respostas em portugues do Brasil
 - prioridade para clareza executiva e consistencia de metricas
+
+## Autenticacao (transporte HTTP)
+
+Todo acesso via `serve-http` exige autenticacao — token Bearer estatico
+(`MCP_API_KEYS`) e/ou OAuth 2.1 delegado a um IdP externo
+(`mcp_server/oauth.py`). O servidor atua apenas como *resource server*:
+nao implementa `/authorize`, `/token` nem `/register`. Ver
+[README.md](../README.md) para o deploy completo (Docker, Caddy, Auth0).

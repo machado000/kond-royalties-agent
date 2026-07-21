@@ -2,10 +2,10 @@
 
 V1 simplificada do agente analitico da KOND.
 
-Arquitetura alvo:
+Arquitetura:
 
 - agente customizado
-- servidor MCP
+- servidor MCP (stdio para dev local, Streamable HTTP para producao)
 - Postgres (multiplos schemas) como fonte principal
 - catalogo semantico em PT-BR
 - relatorios em PDF como artefatos
@@ -24,6 +24,8 @@ Responder perguntas de performance de royalties de artistas com:
 - Postgres direto (uma conexao, varios schemas via `search_path`)
 - sem frontend proprio
 - foco em MCP + prompts + artefatos
+- hospedagem compartilhada em producao (Docker + Caddy + OAuth), nao apenas
+  uso local
 
 ## Estrutura
 
@@ -34,6 +36,7 @@ Responder perguntas de performance de royalties de artistas com:
 - `semantic_catalog/`: metricas, dimensoes e fontes aprovadas
 - `config/`: conexao Postgres e dicionario de colunas
 - `tests/`: testes unitarios iniciais
+- `Dockerfile`, `docker-compose.yml`: imagem e deploy do transporte HTTP
 
 ## Status do schema de dados
 
@@ -46,150 +49,103 @@ detalhe completo (incluindo notas de qualidade de dados) e `TODO.md` para
 pendencias de investigacao (ex.: significado de `quantity` por
 origem/tipo de receita).
 
-## Proximos passos
+## Deploy em producao (Docker)
 
-1. Investigar pendencias de qualidade de dados listadas em `TODO.md`
-2. Avaliar enriquecimento via schemas de detalhe (`universal`,
-   `warner_chappell`) e `public.dim_artistas`
-3. Implementar geracao de relatorios em PDF
-4. Configurar o agente customizado
+O servidor roda como container Docker expondo o transporte Streamable HTTP
+(`mcp_server/mcp_http.py`, comando `serve-http`), atras de um reverse proxy
+Caddy que ja atende outros servicos no mesmo host. Isso permite que varias
+pessoas/clientes usem o agente sem cada um precisar de credenciais de
+Postgres localmente.
 
-## Setup para colaboradores
+### Imagem e container
 
-Pre-requisito: Python 3.12+ e acesso a um Postgres com os schemas de royalties.
-
-```bash
-git clone https://github.com/machado000/kond-royalties-agent
-cd kond-royalties-agent
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-
-cp .env.example .env
-# preencher .env com sua OPENAI_API_KEY, DATABASE_URL e POSTGRES_SCHEMAS
-```
-
-Validar a instalacao:
+`Dockerfile` na raiz constroi a imagem (`python:3.12-slim`, instala
+`.[http]`, expoe a porta 8080). `docker-compose.yml` define o servico,
+carrega `.env` via `env_file`, publica uma porta direta no host e conecta
+o container na rede Docker externa compartilhada com o Caddy
+(`kern-prefect_default`):
 
 ```bash
-pytest -m "not slow"
-python -m mcp_server.server diagnose-postgres
+docker compose build
+docker compose up -d
+docker compose logs --tail=30
 ```
 
-> Use `python -m mcp_server.server <comando>` (executado a partir da raiz
-> do repositorio, com o venv ativo) como forma principal de validar e rodar
-> o agente — nao depende do entry point instalado. O comando
-> `kond-royalties-mcp` (instalado via `pip install -e .`) tambem deve
-> funcionar como atalho; se ele falhar com
-> `ModuleNotFoundError: No module named 'mcp_server'`, rode
-> `pip install -e . --force-reinstall --no-deps` para regenerar a
-> instalacao editable.
+### Variaveis de ambiente (`.env`)
 
-### Usando como servidor MCP
+Ver `.env.example` para o arquivo completo. Resumo:
 
-O servidor expoe o comando `serve-mcp` (stdio). Os segredos **nao**
-precisam ser declarados na configuracao do MCP — o servidor carrega o
-arquivo `.env` do repositorio automaticamente.
+**Postgres** — `DATABASE_URL` ou `PGHOST`/`PGPORT`/`PGDATABASE`/`PGUSER`/
+`PGPASSWORD`/`PGSSLMODE`, mais `POSTGRES_SCHEMAS`.
 
-**Claude Code**
+**OpenAI** — `OPENAI_API_KEY`, `OPENAI_MODEL`.
 
-O repositorio ja inclui um `.mcp.json` na raiz, detectado automaticamente
-ao abrir o projeto no Claude Code. Ele aponta para `.venv/bin/python`
-(caminho relativo ao repositorio), entao basta ter o ambiente virtual
-criado conforme o setup acima — nenhuma edicao e necessaria.
-
-> Caminho relativo `.venv/bin/python` e especifico de macOS/Linux. Em
-> Windows, ajuste para `.venv\Scripts\python.exe` localmente.
-
-**OpenAI Codex CLI**
-
-O Codex le configuracao de MCP do seu arquivo global
-(`~/.codex/config.toml`), nao de um arquivo do repositorio. Copie o
-template em [`docs/codex-mcp-config.example.toml`](docs/codex-mcp-config.example.toml)
-para o seu `~/.codex/config.toml`, ajustando o caminho absoluto do seu
-clone local.
-
-**Google Antigravity**
-
-Antigravity le configuracao de MCP do arquivo global
-`~/.gemini/config/mcp_config.json` (formato `mcpServers`, com `cwd`
-suportado). Template em
-[`docs/antigravity-mcp-config.example.json`](docs/antigravity-mcp-config.example.json).
-Em vez de editar o JSON a mao, rode (com o venv ja criado):
-
-```bash
-python scripts/install_mcp_config.py --client antigravity
-```
-
-O script faz merge da entrada `kond_royalties` na configuracao existente
-(sem apagar outros servidores ja configurados) usando o caminho absoluto
-deste clone e do seu `.venv`. Depois, na IDE, va em **Manage MCP Servers**
-e clique em **refresh** (ou reinicie a Antigravity).
-
-**Claude Desktop**
-
-O Claude Desktop le configuracao de MCP do arquivo global
-`~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) —
-formato `mcpServers`, sem suporte a `cwd`. Template em
-[`docs/claude-desktop-mcp-config.example.json`](docs/claude-desktop-mcp-config.example.json).
-Mesmo instalador:
-
-```bash
-python scripts/install_mcp_config.py --client claude-desktop
-```
-
-Depois, **feche completamente** o Claude Desktop (Cmd+Q, nao so a janela)
-e reabra — diferente da Antigravity, ele so recarrega a configuracao de
-MCP na inicializacao.
-
-> Use `--dry-run` em qualquer um dos dois comandos acima para ver o
-> resultado sem escrever o arquivo.
-
-### Transporte remoto (Streamable HTTP)
-
-Alem do stdio local, o servidor tambem expoe um transporte HTTP
-(`mcp_server/mcp_http.py`, comando `serve-http`), para hospedagem
-compartilhada — ex.: um MCP acessivel por varias pessoas/maquinas sem cada
-uma precisar de credenciais de Postgres localmente. Requer o extra
-`pip install ".[http]"`.
-
-Autenticacao (`mcp_server/oauth.py`) aceita duas fontes de confianca ao
-mesmo tempo, na ordem abaixo — pelo menos uma precisa estar configurada, o
-processo recusa iniciar sem nenhuma:
+**Autenticacao HTTP** (`mcp_server/oauth.py`) — pelo menos uma das duas
+precisa estar configurada, o processo recusa iniciar sem nenhuma:
 
 - `MCP_API_KEYS`: lista de tokens Bearer estaticos, separados por virgula
-  — caminho rapido, sem chamada de rede, para clientes ja configurados
-  manualmente (Antigravity, scripts)
+  — caminho rapido, sem chamada de rede, para clientes que aceitam um
+  header customizado (Antigravity, scripts)
 - `OAUTH_ISSUER_URL` + `OAUTH_RESOURCE_URL`: delegacao OAuth 2.1 para um
-  IdP externo (WorkOS AuthKit em producao) — necessario para clientes que
-  fazem o fluxo OAuth completo (ex.: conector remoto do claude.ai). Token
-  validado localmente como JWT (assinatura RS256 via JWKS, `iss`/`aud`/`exp`)
-  contra o IdP configurado; `OAUTH_JWKS_URL` e `OAUTH_REQUIRED_SCOPES` sao
-  opcionais (ver `.env.example`)
+  IdP externo (Auth0 em producao) — necessario para clientes que fazem o
+  fluxo OAuth completo (ex.: conector remoto do claude.ai). Token validado
+  localmente como JWT (assinatura RS256 via JWKS, descoberto
+  automaticamente por OpenID Connect Discovery; `iss`/`aud`/`exp`
+  conferidos). `OAUTH_JWKS_URL` e `OAUTH_REQUIRED_SCOPES` sao opcionais.
 
-E sempre, independente do metodo de auth:
+Os dois mecanismos coexistem no mesmo processo: o verificador tenta o
+token estatico primeiro (sem custo de rede), depois valida como JWT do IdP.
+
+**Sempre, independente do metodo de auth**:
 
 - `MCP_ALLOWED_HOSTS`: hosts reais (dominio[:porta]) usados neste deploy,
   para satisfazer a protecao contra DNS rebinding do SDK `mcp` sem
   desativa-la
 
-Ha um deploy de referencia rodando em Docker em `kern-data`, acessivel de
-duas formas (ambas ativas ao mesmo tempo):
+### Reverse proxy (Caddy)
 
-- HTTPS via Caddy: `https://kerndata1.ddns.net/kond-royalties-mcp/mcp`
-  (`handle_path` no `KERN-prefect/Caddyfile`, sem porta propria publicada)
-- HTTP direto: `http://kerndata1.ddns.net:8081/mcp` (porta publicada no
-  `docker-compose.yml`, mesma convencao do `mistral-analytics-mcp` em
-  `:8080`)
+O deploy de referencia roda em `kern-data`, atras do Caddy que tambem
+atende o Prefect nesse host (`KERN-prefect/Caddyfile`). Duas rotas sao
+necessarias por servico:
+
+```
+kerndata1.ddns.net {
+  handle /.well-known/oauth-protected-resource/kond-royalties-mcp/* {
+    reverse_proxy kond-royalties-mcp:8080
+  }
+
+  handle_path /kond-royalties-mcp/* {
+    reverse_proxy kond-royalties-mcp:8080
+  }
+
+  handle {
+    reverse_proxy prefect-server:4200
+  }
+
+  encode gzip
+}
+```
+
+- `handle_path /kond-royalties-mcp/*`: rota principal, com prefixo
+  removido antes de encaminhar ao container.
+- `handle /.well-known/oauth-protected-resource/kond-royalties-mcp/*`
+  (**sem** remocao de prefixo): exigida pelo RFC 9728. O SDK `mcp` registra
+  o endpoint de metadados usando o caminho completo do
+  `OAUTH_RESOURCE_URL` (incluindo `/kond-royalties-mcp`), entao a rota
+  precisa encaminhar a URL original intacta — `handle_path` quebraria isso.
+
+Sempre validar antes de recarregar (o Caddyfile atende varios servicos, um
+erro de sintaxe derruba o roteamento de todos):
+
+```bash
+docker exec kern-prefect-caddy-1 caddy validate --config /etc/caddy/Caddyfile
+docker exec kern-prefect-caddy-1 caddy reload --config /etc/caddy/Caddyfile
+```
+
+### Multiplos MCPs no mesmo host
 
 `kern-data` hospeda varios MCPs, um por servico, cada um em uma porta
-direta sequencial, e cada um tambem pode ganhar uma rota HTTPS via Caddy
-(`handle_path` no `KERN-prefect/Caddyfile`) — `mistral-analytics-mcp`
-recebeu a mesma tratativa: rota `https://kerndata1.ddns.net/mistral-analytics-mcp/mcp`,
-alem de continuar em `http://kerndata1.ddns.net:8080/mcp`. Para isso, seu
-`docker-compose.yml` tambem passou a se conectar na rede externa
-`kern-prefect_default` (mesmo padrao usado aqui), e `MCP_ALLOWED_HOSTS` no
-seu `.env` inclui as duas formas de Host header (`:8080` e sem porta).
+direta sequencial (alem da rota HTTPS via Caddy):
 
 | Porta | Servico |
 |-------|---------|
@@ -197,38 +153,91 @@ seu `.env` inclui as duas formas de Host header (`:8080` e sem porta).
 | 8081  | `kond-royalties-mcp` (este projeto) |
 | 8082+ | reservado para proximos MCPs |
 
-Ao adicionar um novo MCP nesse host, escolher a proxima porta livre e
+Ao adicionar um novo MCP nesse host: escolher a proxima porta livre,
 adicionar `kerndata1.ddns.net:PORTA` em `MCP_ALLOWED_HOSTS` daquele
-servico (protecao contra DNS rebinding do SDK `mcp`). Ver `Dockerfile` e
-`docker-compose.yml` na raiz do repo para o padrao completo.
+servico, e conectar seu `docker-compose.yml` na rede externa
+`kern-prefect_default` (mesmo padrao usado aqui) para que o Caddy consiga
+alcanca-lo por nome de servico.
 
-**OAuth (WorkOS AuthKit) em producao**: `kond-royalties-mcp` delega para
-`https://dynamic-asteroid-97.authkit.app` (projeto WorkOS "kond-analytics").
-Alem da rota `handle_path /kond-royalties-mcp/*` de sempre, o RFC 9728
-exige uma rota **adicional e sem prefixo removido** no `KERN-prefect/Caddyfile`
-para o endpoint de metadados, porque o SDK registra o caminho completo do
-`OAUTH_RESOURCE_URL` (incluindo `/kond-royalties-mcp`) sob
-`/.well-known/oauth-protected-resource/...`:
+### OAuth (Auth0) — configuracao do IdP
 
-```
-handle /.well-known/oauth-protected-resource/kond-royalties-mcp/* {
-  reverse_proxy kond-royalties-mcp:8080
+`kond-royalties-mcp` delega autenticacao OAuth para um tenant Auth0
+dedicado. Passo a passo:
+
+1. Criar um tenant Auth0 (free tier e suficiente).
+2. **Critico**: em **Settings → Advanced → Settings**, habilitar
+   **Resource Parameter Compatibility Profile** e **Include Issuer in
+   Authorization Responses** (tenant-wide). Sem isso, o Auth0 ignora
+   silenciosamente o parametro `resource` que o claude.ai envia (RFC 8707)
+   e cai no comportamento legado baseado em `audience` — o sintoma e um
+   erro de token exchange sem pista clara da causa.
+3. **Applications → APIs → Create API**: Identifier = `OAUTH_RESOURCE_URL`
+   exato (ex.: `https://kerndata1.ddns.net/kond-royalties-mcp/mcp`),
+   Signing Algorithm RS256.
+4. **Applications → Applications → Create Application**: tipo *Regular Web
+   Application*, com **Allowed Callback URLs** incluindo
+   `https://claude.ai/api/mcp/auth_callback` e
+   `https://claude.com/api/mcp/auth_callback`. Confirmar na aba **APIs**
+   que essa aplicacao esta autorizada contra a API criada no passo 3.
+5. Usar o **Domain** da aplicacao (com `https://` na frente) como
+   `OAUTH_ISSUER_URL`, e o **Client ID**/**Client Secret** ao adicionar o
+   conector no claude.ai (ver abaixo).
+
+### Conectando clientes ao servidor remoto
+
+**claude.ai (Settings → Connectors → Add → Custom Connectors)**:
+
+- Nome: livre
+- Remote MCP server URL: `https://kerndata1.ddns.net/kond-royalties-mcp/mcp`
+- Advanced settings → OAuth Client ID / OAuth Client Secret: os valores da
+  Application Auth0 criada acima
+
+Ao clicar Connect, o fluxo redireciona para o login do Auth0, pede
+consentimento e volta para o claude.ai com o conector conectado — DCR
+(Dynamic Client Registration) **nao** e necessario, o claude.ai suporta
+credenciais inseridas manualmente.
+
+**Antigravity, scripts, outros clientes com suporte a MCP remoto +
+header customizado**: usar o token estatico (`MCP_API_KEYS`) direto, sem
+OAuth. Formato `mcpServers` (Antigravity usa `serverUrl`; outros clientes
+podem usar `url`):
+
+```json
+{
+  "mcpServers": {
+    "kond_royalties": {
+      "serverUrl": "https://kerndata1.ddns.net/kond-royalties-mcp/mcp",
+      "headers": {
+        "Authorization": "Bearer <token de MCP_API_KEYS>"
+      }
+    }
+  }
 }
 ```
 
-Sempre validar (`docker exec kern-prefect-caddy-1 caddy validate --config
-/etc/caddy/Caddyfile`) antes de `caddy reload` — o Caddyfile atende varios
-servicos, um erro de sintaxe derruba o roteamento de todos.
-
-### Distribuicao
-
-Para instalar a partir do GitHub sem clonar manualmente:
+### Verificacao pos-deploy
 
 ```bash
-pip install "git+https://github.com/machado000/kond-royalties-agent"
+# metadados RFC 9728 (deve refletir o issuer OAuth configurado)
+curl https://kerndata1.ddns.net/.well-known/oauth-protected-resource/kond-royalties-mcp/mcp
+
+# sem token -> 401
+curl -X POST https://kerndata1.ddns.net/kond-royalties-mcp/mcp -H "Content-Type: application/json" -d '{}'
+
+# com token estatico -> 200
+curl -X POST https://kerndata1.ddns.net/kond-royalties-mcp/mcp \
+  -H "Authorization: Bearer <token>" -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}'
 ```
 
-Isso expoe o comando `kond-royalties-mcp` globalmente no ambiente Python
-ativo — util para apontar o `command` da configuracao MCP diretamente para
-o binario instalado (`kond-royalties-mcp serve-mcp`) em vez do caminho do
-venv, caso prefira instalacao isolada via `pipx`.
+Depois, confirmar que os demais servicos no mesmo host (outros MCPs,
+Prefect) continuam respondendo normalmente.
+
+## Proximos passos
+
+1. Investigar pendencias de qualidade de dados listadas em `TODO.md`
+2. Avaliar enriquecimento via schemas de detalhe (`universal`,
+   `warner_chappell`) e `public.dim_artistas`
+3. Implementar geracao de relatorios em PDF
+4. Configurar o agente customizado

@@ -3,14 +3,20 @@
 ## Visao geral
 
 ```text
-Agente customizado
+Cliente (claude.ai, Antigravity, scripts)
+        |
+        v (HTTPS, OAuth ou Bearer estatico)
+      Caddy
         |
         v
-   Servidor MCP
+   Servidor MCP (container Docker, Streamable HTTP)
         |
         v
- Postgres (raw/silver/marts) + catalogo semantico + relatorios
+ Postgres (multiplos schemas via search_path) + catalogo semantico + relatorios
 ```
+
+Para uso local/dev, o mesmo servidor tambem expoe stdio (`serve-mcp`) sem
+Docker/Caddy/OAuth no caminho.
 
 ## Componentes
 
@@ -28,6 +34,8 @@ Agente customizado
 - consulta o Postgres (uma conexao, varios schemas via `search_path`)
 - introspecta o schema real via `information_schema` quando necessario
 - retorna payloads estruturados
+- em producao, autentica requisicoes via token Bearer estatico e/ou OAuth
+  2.1 delegado a um IdP externo (`mcp_server/oauth.py`)
 
 ### Catalogo semantico
 
@@ -59,3 +67,14 @@ Chappell, Warner Music) no grao artista + periodo (mes) + origem + tipo de
 receita. Ver `config/postgres_sources.yml` e `config/column_dictionary.yml`
 para o detalhe completo, incluindo notas de qualidade de dados (ex.: grao
 mensal, nao diario). Pendencias de investigacao em [TODO.md](../TODO.md).
+
+## Autenticacao e deploy remoto
+
+Ver [README.md](../README.md) para o passo a passo completo de deploy em
+producao (Docker + Caddy + Auth0). Resumo da decisao arquitetural: o
+servidor atua apenas como *resource server* OAuth — nao implementa
+`/authorize`, `/token` nem `/register`; a emissao de tokens e delegada
+inteiramente a um IdP externo (Auth0 em producao), validando localmente
+via JWKS. Essa escolha evita manter uma superficie de autorizacao propria
+(registro de clientes, consentimento, rotacao de refresh tokens) — ver
+`mcp_server/oauth.py`.

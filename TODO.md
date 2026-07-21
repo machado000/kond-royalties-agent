@@ -83,9 +83,17 @@ Universal, Warner Chappell, Warner Music).
 17. [x] Transporte HTTP remoto (`mcp_http.py`, `serve-http`) portado da
     versao BigQuery e deployado em Docker em `kern-data`
     (`~/kond-royalties-mcp/`), atras do Caddy do Prefect via path
-    `/royalties-mcp/*` (2026-07-16)
-18. [ ] Avaliar OAuth sobre o transporte HTTP caso se queira registrar como
-    "custom connector" remoto no claude.ai chat (hoje so Bearer token —
-    suficiente para clientes que suportam header customizado, mas nao para
-    o fluxo de conector do claude.ai)
+    `/kond-royalties-mcp/*` (2026-07-16, renomeado de `/royalties-mcp/*`)
+18. [x] OAuth 2.1 sobre o transporte HTTP para o conector remoto do
+    claude.ai — implementado em `mcp_server/oauth.py` (delegacao a IdP
+    externo, coexiste com `MCP_API_KEYS`), validado ponta a ponta em
+    producao via Auth0 (2026-07-20). WorkOS AuthKit foi tentado primeiro e
+    abandonado apos falha nao diagnosticada de `invalid_target` no token
+    exchange — ver `.context/architecture-notes.md`
 19. [ ] Rotina de rotacao do token em `MCP_API_KEYS` (`kern-data:~/kond-royalties-mcp/.env`)
+20. [ ] Rotina de rotacao do client secret Auth0 (Application "Claude" no
+    tenant `dev-paer1atuombl2qf5.us.auth0.com`)
+21. [ ] Testar `ask_royalties` com dados reais atraves do conector
+    conectado no claude.ai (ate agora validado apenas
+    `tools/list`/`resources/list`/`prompts/list` — falta confirmar um
+    `tools/call` real retornando dados corretos pelo fluxo OAuth)

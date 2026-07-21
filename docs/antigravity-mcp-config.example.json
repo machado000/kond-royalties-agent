@@ -1,9 +1,10 @@
 {
   "mcpServers": {
     "kond_royalties": {
-      "command": "/ABSOLUTE/PATH/TO/kond-royalties-agent/.venv/bin/python",
-      "args": ["-m", "mcp_server.server", "serve-mcp"],
-      "cwd": "/ABSOLUTE/PATH/TO/kond-royalties-agent"
+      "serverUrl": "https://kerndata1.ddns.net/kond-royalties-mcp/mcp",
+      "headers": {
+        "Authorization": "Bearer <token de MCP_API_KEYS>"
+      }
     }
   }
 }

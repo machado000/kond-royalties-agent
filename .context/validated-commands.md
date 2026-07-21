@@ -2,82 +2,76 @@
 
 Repositorio: `~/Projetos/KOND-analytics-agent`
 
-Todos os comandos abaixo foram validados em 2026-07-01 contra o Postgres
-real de producao (credenciais em `.env`, nao versionadas).
-
-## Ambiente
-
-```bash
-python3 -m venv .venv
-.venv/bin/pip install -e '.[dev]'
-```
-
 ## Testes
 
 ```bash
 PYTHONPATH=. .venv/bin/python -m pytest -q
 ```
 
-Resultado validado: `13 passed`.
+Resultado validado: `14 passed`.
 
-## Configuracao
+## CLI local (stdio) — dev
 
 ```bash
 PYTHONPATH=. .venv/bin/python -m mcp_server.server config
-```
-
-Observacao: `openai_api_key`, `database_url` e `pg_password` aparecem como
-`***redacted***`.
-
-## Catalogo
-
-```bash
 PYTHONPATH=. .venv/bin/python -m mcp_server.server catalog
-```
-
-## Diagnostico Postgres
-
-```bash
 PYTHONPATH=. .venv/bin/python -m mcp_server.server diagnose-postgres
-```
-
-Resultado validado: `status: ok`, schemas acessiveis = `public`,
-`universal`, `warner_chappell` (nenhum `missing_enabled_schemas`).
-
-## Introspeccao de schema
-
-```bash
 PYTHONPATH=. .venv/bin/python -m mcp_server.server describe-schema --schema public
-```
-
-Resultado validado: 64 tabelas/views no schema `public`, incluindo
-`vw_ft_dados_analiticos_union` (14 colunas), `dim_artistas` (21 colunas),
-`dim_calendario`, `dim_canal`, `dim_pais` e as fact/staging tables por
-distribuidora.
-
-## Planejamento semantico
-
-```bash
 PYTHONPATH=. .venv/bin/python -m mcp_server.server plan-query --question "Como foram quantidade e receita por artista nos ultimos 90 dias?"
-```
-
-## Execucao real da query
-
-```bash
 PYTHONPATH=. .venv/bin/python -m mcp_server.server run-query --question "Como foram quantidade e receita por artista nos ultimos 90 dias?" --limit 20
-```
-
-Resultado validado: 7 linhas, artistas reais (DJ ARANA, DJ JAPA NK, MC
-KEKEL, MC KEVINHO, etc.) com `quantity`/`revenue` agregados corretamente.
-
-## Resposta executiva com OpenAI
-
-```bash
 PYTHONPATH=. .venv/bin/python -m mcp_server.server ask --question "Como foram quantidade e receita por artista nos ultimos 90 dias?" --limit 20
 ```
 
-Resultado validado: `generation_mode: "openai"`, resposta em PT-BR citando
-os artistas corretos e valores batendo com `run-query`.
+Resultados validados: `diagnose-postgres` -> `status: ok`, schemas
+acessiveis = `public`, `universal`, `warner_chappell`. `describe-schema`
+-> 64 tabelas/views em `public`. `run-query`/`ask` -> linhas reais
+(DJ ARANA, DJ JAPA NK, MC KEKEL, MC KEVINHO, etc.), `ask` com
+`generation_mode: "openai"`.
+
+## Deploy em producao (Docker + Caddy) — `kern-data`
+
+```bash
+ssh kern-data
+cd kond-royalties-mcp
+docker compose build
+docker compose up -d
+docker compose logs --tail=30
+```
+
+Sempre validar o Caddyfile antes de recarregar (atende varios servicos):
+
+```bash
+docker exec kern-prefect-caddy-1 caddy validate --config /etc/caddy/Caddyfile
+docker exec kern-prefect-caddy-1 caddy reload --config /etc/caddy/Caddyfile
+```
+
+## Verificacao HTTP remota
+
+```bash
+# metadados RFC 9728
+curl https://kerndata1.ddns.net/.well-known/oauth-protected-resource/kond-royalties-mcp/mcp
+
+# sem token -> 401
+curl -X POST https://kerndata1.ddns.net/kond-royalties-mcp/mcp -H "Content-Type: application/json" -d '{}'
+
+# com token estatico -> 200
+curl -X POST https://kerndata1.ddns.net/kond-royalties-mcp/mcp \
+  -H "Authorization: Bearer <MCP_API_KEYS>" -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}'
+```
+
+Resultado validado: `200` com sessao MCP estabelecida; porta direta
+(`:8081`) e rota HTTPS via Caddy ambas testadas.
+
+## Conector remoto claude.ai (OAuth via Auth0)
+
+Validado ponta a ponta em producao (2026-07-20): Settings → Connectors →
+Add custom connector → URL `https://kerndata1.ddns.net/kond-royalties-mcp/mcp`
+→ Advanced settings com Client ID/Secret da Application Auth0 → Connect →
+login Auth0 → consentimento → conector conectado. Confirmado nos logs do
+servidor: `ListToolsRequest`, `ListResourcesRequest`, `ListPromptsRequest`
+todos com `200 OK` apos sessao autenticada criada.
 
 ## Servidor MCP (stdio)
 

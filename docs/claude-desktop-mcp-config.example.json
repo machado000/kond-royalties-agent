@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "kond_royalties": {
-      "command": "/ABSOLUTE/PATH/TO/kond-royalties-agent/.venv/bin/python",
-      "args": ["-m", "mcp_server.server", "serve-mcp"]
-    }
-  }
-}
