@@ -24,16 +24,22 @@ from jwt import PyJWKClient
 from mcp.server.auth.provider import AccessToken, TokenVerifier
 
 
-def _discover_jwks_url(issuer_url: str) -> str:
-    """Descobre o `jwks_uri` via OpenID Connect Discovery
+def _discover_oidc_config(issuer_url: str) -> tuple[str, str]:
+    """Descobre `issuer` e `jwks_uri` via OpenID Connect Discovery
     (`{issuer}/.well-known/openid-configuration`), o mecanismo padrao
     suportado por qualquer IdP compativel (WorkOS, Auth0, etc.) -- evita
     hardcodar a convencao de path de um provedor especifico.
+
+    Usa o `issuer` retornado pelo proprio IdP (nao uma normalizacao nossa)
+    para validar o claim `iss` dos tokens: IdPs divergem sobre incluir
+    barra final (WorkOS nao inclui, Auth0 inclui) -- confiar no valor
+    auto-declarado evita mismatch silencioso.
     """
-    discovery_url = f"{issuer_url}/.well-known/openid-configuration"
+    discovery_url = f"{issuer_url.rstrip('/')}/.well-known/openid-configuration"
     response = requests.get(discovery_url, timeout=10)
     response.raise_for_status()
-    return response.json()["jwks_uri"]
+    data = response.json()
+    return data["issuer"], data["jwks_uri"]
 
 
 class JWTBearerTokenVerifier(TokenVerifier):
@@ -45,12 +51,14 @@ class JWTBearerTokenVerifier(TokenVerifier):
         jwks_url: str | None = None,
     ) -> None:
         self._valid_tokens = valid_tokens
-        # O claim `iss` de um token real normalmente nao tem barra final,
-        # mesmo que a URL do issuer configurada tenha -- normaliza aqui para
-        # nao depender do .env estar byte-a-byte identico ao token.
-        self._issuer_url = issuer_url.rstrip("/")
         self._audience = audience
-        resolved_jwks_url = jwks_url or _discover_jwks_url(self._issuer_url)
+        if jwks_url:
+            # jwks_url explicito: nao ha discovery para nos dar o `issuer`
+            # auto-declarado, entao normalizamos barra final por conta propria.
+            self._issuer_url = issuer_url.rstrip("/")
+            resolved_jwks_url = jwks_url
+        else:
+            self._issuer_url, resolved_jwks_url = _discover_oidc_config(issuer_url)
         self._jwk_client = PyJWKClient(resolved_jwks_url)
 
     async def verify_token(self, token: str) -> AccessToken | None:
