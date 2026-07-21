@@ -28,7 +28,8 @@ DIMENSION_KEYWORDS = {
     "composer": ["compositor", "composer"],
     "isrc": ["isrc"],
     "territory": ["territorio", "pais", "country"],
-    "platform": ["plataforma", "dsp"],
+    "platform": ["plataforma", "dsp", "canal"],
+    "gravadora": ["gravadora", "label", "selo"],
 }
 
 # Valores gravados na coluna `origem` (ver config/column_dictionary.yml).
@@ -145,6 +146,10 @@ def infer_date_range(question: str, today: date | None = None) -> DateRange | No
 
     if "ultimo mes" in normalized or "last month" in normalized:
         start = reference - timedelta(days=29)
+        return DateRange(start_date=start.isoformat(), end_date=reference.isoformat())
+
+    if "ultimo ano" in normalized or "last year" in normalized:
+        start = reference - timedelta(days=364)
         return DateRange(start_date=start.isoformat(), end_date=reference.isoformat())
 
     return None

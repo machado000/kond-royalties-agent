@@ -25,3 +25,15 @@ def test_detail_source_has_track_dimension() -> None:
 
     assert "track" in payload["sources"]["orchard_detail"]["dimensions"]
     assert "track" not in payload["sources"]["royalty_performance"]["dimensions"]
+
+
+def test_royalty_performance_has_gravadora_dimension() -> None:
+    payload = build_catalog_payload()
+
+    assert "gravadora" in payload["sources"]["royalty_performance"]["dimensions"]
+
+
+def test_warner_chappell_detail_has_platform_dimension() -> None:
+    payload = build_catalog_payload()
+
+    assert "platform" in payload["sources"]["warner_chappell_detail"]["dimensions"]

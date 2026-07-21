@@ -209,6 +209,14 @@ detail_tables:
       matched_artista_keyword: {type: TEXT}
       matched_artista_id: {type: INTEGER, description: FK para public.dim_artistas.id}
       artist: {type: TEXT, description: Artista ja normalizado (mesmo padrao da view unificada)}
+    enrichment: >
+      Matching ja resolvido dentro da propria view (nao precisa de JOIN
+      adicional no agente): `artista_produto` casado via ILIKE contra
+      `dim_artistas.artista_keyword`. Titulos de faixa (`titulo_musica`)
+      corrompidos (ex.: `????????????????????`) em ~0,57% das linhas
+      (53.672 de 9.362.461 em 2026-07-21) — problema de encoding na origem
+      (arquivos de statement da Orchard), nao no agente nem na query. Ver
+      TODO.md item 9b.
 
   public.ft_somlivre_sonymusic:
     description: >
@@ -252,6 +260,14 @@ detail_tables:
       matched_artista_keyword: {type: TEXT}
       matched_artista_id: {type: INTEGER}
       artist: {type: TEXT}
+    enrichment: >
+      Matching ja resolvido dentro da propria view: join com
+      `universal.dim_musica` por `codigo_musica` traz `compositor`, que e
+      casado por igualdade exata contra `dim_artistas.universal_compositor`.
+      `universal.dim_compositor` e apenas a tabela de normalizacao de
+      `dim_musica.compositor` (enforce de unicidade) — nao adiciona nada
+      alem do que ja vem via `dim_musica`, entao nao ha necessidade de
+      join-la separadamente (TODO.md item 8).
 
   public.ft_warner_chappell_dados_analiticos:
     description: >
@@ -329,6 +345,11 @@ detail_tables:
       amount_paid_less_tax: {type: NUMERIC}
       row_hash: {type: CHAR}
       inserted_at: {type: TIMESTAMPTZ}
+    enrichment: >
+      `warner_chappell_detail.platform` (semantic_catalog/catalog.yml) faz
+      join com `warner_chappell.dim_exploitation_source` por
+      (income_provider_name, exploitation_source) -> descricao_canal
+      (ex.: Spotify, Youtube, Radio, TV, Show) — implementado 2026-07-21.
 
   universal.dim_musica:
     description: Dimensao de faixas/musicas da Universal.
@@ -375,6 +396,33 @@ detail_tables:
       universal_compositor: {type: TEXT}
       warner_chappel_deal_scope_name: {type: ARRAY}
       warner_music_artist_name: {type: TEXT}
+
+  # --- Achado de investigacao (2026-07-21): cobertura real do matching de artista ---
+  # `dim_artistas` tem 660 linhas. As colunas dedicadas por plataforma
+  # (`dsu_artista`, `omie_projeto`, `cod_sony`, `warner_chappel_deal_scope_name`,
+  # `warner_music_artist_name`) e o campo fuzzy `artista_keyword` estao quase
+  # todos vazios — sao chaves de matching praticamente nao preenchidas, nao
+  # colunas com problema de codigo. Populacao observada em 2026-07-21:
+  #   dsu_artista=6/660, omie_projeto=0/660, cod_sony=0/660,
+  #   warner_chappel_deal_scope_name=1/660, warner_music_artist_name=4/660,
+  #   artista_keyword=9/660, gravadora=36/660 (mas cobre a maior parte da
+  #   receita — poucos artistas com gravadora preenchida concentram a maior
+  #   parte do faturamento).
+  # Taxa de match real por plataforma (artistas distintos casados/total):
+  #   DSU: 6/7 (via dsu_artista, exato) — bom, catalogo pequeno
+  #   Omie: 0/269 (via omie_projeto, exato) — sem cobertura
+  #   Somlivre: 0/64 (via cod_sony, exato) — sem cobertura
+  #   Warner Music: 1/59 (via warner_music_artist_name, exato) — sem cobertura
+  #   Warner Chappell: 0/229 (via warner_chappel_deal_scope_name, exato) — sem cobertura
+  #   Orchard/Universal: ja resolvido internamente pelas proprias views
+  #   ft_orchard_dados_analiticos/ft_universal_dados_analiticos (ver abaixo)
+  # Conclusao: enriquecer artist para omie_detail/somlivre_detail/
+  # warner_chappell_detail/warner_music_detail via JOIN em dim_artistas NAO
+  # e viavel hoje — nao e um problema de SQL/codigo, e falta de dado nas
+  # colunas de chave de dim_artistas para essas 4 plataformas. Implementado
+  # apenas para dsu_detail.artist (coalesce contra dsu_artista, 6/7 cobertos)
+  # e para royalty_performance.gravadora (via matched_artista_id, ja
+  # calculado na view unificada). Ver TODO.md item 9.
 
 tables:
   public:

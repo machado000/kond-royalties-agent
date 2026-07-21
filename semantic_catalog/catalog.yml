@@ -65,6 +65,15 @@ sources:
       revenue_type:
         label: Tipo de receita
         description: Categoria da receita (Editora, Gravadora, Publicidade, Shows, N/D).
+      gravadora:
+        label: Gravadora
+        description: >
+          Gravadora/selo associado ao artista (via matched_artista_id ->
+          dim_artistas.gravadora). Esparso: so 36 de 660 artistas cadastrados
+          tem gravadora preenchida, mas cobre a maior parte da receita
+          (os poucos artistas com gravadora concentram grande parte do
+          faturamento) — linhas sem match aparecem como null.
+        expression_hint: "(select da.gravadora from dim_artistas da where da.id = matched_artista_id)"
 
   dsu_detail:
     description: >
@@ -83,8 +92,11 @@ sources:
         label: Periodo
       artist:
         label: Artista
-        expression_hint: artista
-        description: "Nome bruto do artista — sem match contra dim_artistas."
+        expression_hint: "coalesce((select da.nome_artistico from dim_artistas da where da.dsu_artista = artista limit 1), artista)"
+        description: >
+          Nome normalizado quando ha match exato contra
+          dim_artistas.dsu_artista (6 de 7 artistas do DSU cobertos);
+          cai para o nome bruto quando nao ha match.
       territory:
         label: UF
         expression_hint: uf
@@ -246,6 +258,17 @@ sources:
       territory:
         label: Territorio
         expression_hint: source_territory_name
+      platform:
+        label: Plataforma/canal
+        description: >
+          Descricao do canal de exploracao (via join com
+          warner_chappell.dim_exploitation_source por
+          income_provider_name+exploitation_source) — ex.: Spotify, Youtube,
+          Radio, TV, Show.
+        expression_hint: >-
+          (select d.descricao_canal from warner_chappell.dim_exploitation_source d
+          where d.income_provider_name = ft_warner_statement.income_provider_name
+          and d.exploitation_source = ft_warner_statement.exploitation_source limit 1)
       revenue_type:
         label: Tipo de receita
         expression_hint: tango_income_type_name

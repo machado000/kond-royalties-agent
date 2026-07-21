@@ -48,6 +48,49 @@ def test_build_query_for_detail_source_resolves_expression_hints() -> None:
     assert "titulo_musica as track" in sql
 
 
+def test_build_query_gravadora_dimension_resolves_subquery() -> None:
+    plan = PlannedQuery(
+        question="teste",
+        source="royalty_performance",
+        metrics=["revenue"],
+        dimensions=["gravadora"],
+    )
+
+    sql = build_royalty_query_sql(plan)
+
+    assert "dim_artistas" in sql
+    assert "matched_artista_id" in sql
+    assert "as gravadora" in sql
+
+
+def test_build_query_dsu_artist_falls_back_to_raw_name() -> None:
+    plan = PlannedQuery(
+        question="teste",
+        source="dsu_detail",
+        metrics=["revenue"],
+        dimensions=["artist"],
+    )
+
+    sql = build_royalty_query_sql(plan)
+
+    assert "coalesce(" in sql
+    assert "dsu_artista" in sql
+
+
+def test_build_query_warner_chappell_platform_joins_exploitation_source() -> None:
+    plan = PlannedQuery(
+        question="teste",
+        source="warner_chappell_detail",
+        metrics=["revenue"],
+        dimensions=["platform"],
+    )
+
+    sql = build_royalty_query_sql(plan)
+
+    assert "dim_exploitation_source" in sql
+    assert "descricao_canal" in sql
+
+
 def test_build_query_rejects_metric_not_in_source() -> None:
     # PlannedQuery construido diretamente (nao via planner, que ja filtra
     # metricas invalidas) para exercitar a validacao do proprio query_builder.

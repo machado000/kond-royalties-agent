@@ -48,12 +48,19 @@ Universal, Warner Chappell, Warner Music).
 
 ### Planner — PT-BR
 
-4. [ ] Ampliar sinonimos de metricas/dimensoes com o vocabulario real do
-   negocio (ex.: "master" vs "gravadora", "publishing" vs "editora")
-5. [ ] Avaliar se vale expor uma dimensao `label`/gravadora a partir de
-   `matched_artista_id` -> `dim_artistas.gravadora` (hoje nao exposta)
-6. [ ] `infer_date_range` nao reconhece "ultimo ano"/"last year" — hoje
-   cai silenciosamente em "sem intervalo explicito" (todo o historico)
+4. [x] Ampliar sinonimos de metricas/dimensoes com o vocabulario real do
+   negocio (ex.: "master" vs "gravadora", "publishing" vs "editora") — ja
+   coberto em `FILTER_KEYWORDS["revenue_type"]` desde a implementacao
+   multi-fonte (2026-07-21); adicionado tambem `gravadora`/`label`/`selo`
+   como sinonimos de dimensao (ver item 5)
+5. [x] Dimensao `gravadora` exposta em `royalty_performance` via
+   `matched_artista_id -> dim_artistas.gravadora` (2026-07-21). Esparsa (36
+   de 660 artistas tem gravadora cadastrada), mas cobre a maior parte da
+   receita na pratica (poucos artistas com gravadora concentram grande
+   parte do faturamento) — linhas sem match aparecem como null, o que e
+   esperado e correto (nao e um erro de matching)
+6. [x] `infer_date_range` agora reconhece "ultimo ano"/"last year"
+   (2026-07-21)
 
 ### Enriquecimento (fontes de detalhe por plataforma)
 
@@ -66,20 +73,41 @@ Universal, Warner Chappell, Warner Music).
    planner via palavras-chave de faixa/musica/compositor + plataforma, ou
    passado explicitamente pelo chamador). Validado ponta a ponta em
    producao via `ask_royalties` (faixas da Orchard por artista).
-8. [ ] `universal.dim_musica`/`dim_compositor` e
-   `warner_chappell.dim_exploitation_source` ainda nao usadas como JOIN de
-   enriquecimento — hoje as fontes `*_detail` expoem apenas colunas da
-   propria tabela fato, sem join (decisao deliberada para evitar chaves de
-   join nao confirmadas — ver `.context/architecture-notes.md`)
-9. [ ] Avaliar join com `public.dim_artistas` (via `matched_artista_id` ou
-   chaves especificas por plataforma — `dsu_artista`, `omie_projeto`,
-   `cod_sony`, etc.) para normalizar o `artist` raw das fontes `dsu_detail`,
-   `omie_detail`, `somlivre_detail` e ambas Warner — hoje essas fontes
-   expoem nomes brutos, nao casados contra o cadastro de artistas
-   (documentado em `config/column_dictionary.yml`)
-9b. [ ] Investigar titulos de faixa corrompidos (ex.: `????????????????????`)
-    observados em `orchard_detail` — possivel problema de encoding na
-    fonte, nao no agente
+8. [x] Investigado (2026-07-21): `universal.dim_musica` JA esta joinada
+   dentro da propria view `ft_universal_dados_analiticos` (por
+   `codigo_musica`), expondo `titulo_musica`/`compositor` diretamente —
+   nada a fazer. `universal.dim_compositor` e so a tabela de normalizacao
+   de `dim_musica.compositor` (enforce de unicidade), nao adiciona nada
+   alem do que ja vem via `dim_musica` — nao vale joinar separadamente.
+   `warner_chappell.dim_exploitation_source` NAO estava joinada em
+   `warner_chappell_detail` (que usa a tabela base
+   `warner_chappell.ft_warner_statement`, sem esse join) — implementada
+   como nova dimensao `platform` (canal: Spotify, Youtube, Radio, TV, Show
+   etc.), validada contra o banco real.
+9. [x] Investigado a fundo (2026-07-21) — NAO e viavel hoje, e um problema
+   de DADOS, nao de codigo/SQL. `dim_artistas` (660 linhas) tem colunas
+   dedicadas de match por plataforma quase todas vazias: `dsu_artista`
+   6/660, `omie_projeto` 0/660, `cod_sony` 0/660,
+   `warner_chappel_deal_scope_name` 1/660, `warner_music_artist_name`
+   4/660, `artista_keyword` (usado no fuzzy-match das `vw_debug_*`) 9/660.
+   Taxa de match real por plataforma (artistas distintos casados/total):
+   DSU 6/7 (bom — catalogo pequeno), Omie 0/269, Somlivre 0/64, Warner
+   Music 1/59, Warner Chappell 0/229. Orchard/Universal ja tem matching
+   proprio resolvido dentro das suas views (ver item 8). Implementado
+   apenas onde a cobertura e real: `dsu_detail.artist` agora usa
+   `coalesce(match exato contra dsu_artista, nome bruto)`. Para as outras 4
+   plataformas, enriquecer exigiria primeiro POPULAR as colunas de chave em
+   `dim_artistas` (fora do escopo deste repositorio — nao ha ETL aqui) —
+   documentado em `config/column_dictionary.yml` para nao precisar
+   reinvestigar.
+9b. [x] Investigado (2026-07-21): confirmado problema de encoding na fonte,
+    nao no agente. 53.672 de 9.362.461 linhas de `ft_orchard_dados_analiticos`
+    (~0,57%) tem `titulo_musica` corrompido (ex.:
+    `????????????????????`) — padrao classico de caractere de substituicao
+    (mismatch de encoding nos arquivos de statement da Orchard, antes de
+    chegar neste banco). Nao ha o que corrigir no agente/SQL; item
+    permanece como nota para quem mantém a ingestao dos statements da
+    Orchard, caso quiram investigar do lado deles.
 
 ### Relatorio PDF
 

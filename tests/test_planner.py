@@ -55,6 +55,24 @@ def test_explicit_source_overrides_inference() -> None:
     assert plan.source == "universal_detail"
 
 
+def test_plan_infers_ultimo_ano_date_range() -> None:
+    request = RoyaltyQueryRequest(question="Como foi a receita no ultimo ano?")
+
+    plan = plan_royalty_query(request, today=date(2026, 6, 26))
+
+    assert plan.date_range is not None
+    assert plan.date_range.start_date == "2025-06-27"
+    assert plan.date_range.end_date == "2026-06-26"
+
+
+def test_plan_infers_gravadora_dimension() -> None:
+    request = RoyaltyQueryRequest(question="Receita por gravadora")
+
+    plan = plan_royalty_query(request, today=date(2026, 6, 26))
+
+    assert "gravadora" in plan.dimensions
+
+
 def test_unknown_source_falls_back_to_default() -> None:
     request = RoyaltyQueryRequest(question="Receita por artista", source="does_not_exist")
 
