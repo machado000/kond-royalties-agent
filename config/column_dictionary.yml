@@ -273,8 +273,8 @@ detail_tables:
     description: >
       Versao simplificada do statement Warner Chappell (fonte de
       origem='Warner Chappell' na view unificada). Preferir
-      `warner_chappell.ft_warner_statement` (11 vs 23 colunas) para analises
-      detalhadas — ver essa tabela abaixo.
+      `warner_chappell.stg_warner_statement` (11 vs 34 colunas, e mais
+      atual) para analises detalhadas — ver essa tabela abaixo.
     columns:
       id: {type: INTEGER}
       data_extrato: {type: TEXT}
@@ -316,11 +316,12 @@ detail_tables:
 
   warner_chappell.ft_warner_statement:
     description: >
-      Statement Warner Chappell RAW/completo (23 colunas — bem mais rico
-      que `public.ft_warner_chappell_dados_analiticos`, 11 colunas). Tem
-      breakdown fiscal (rate_percentage, tax_rate, withholding_tax) e
-      detalhe de obra (work)/compositor. Preferir esta tabela para analises
-      detalhadas do lado Warner Chappell.
+      STALE (descoberto 2026-07-22): congelada em 2025-12 (39.143 linhas),
+      identica em contagem/intervalo a `stg_warner_statement_old` — parece
+      ter sido uma copia pontual que nunca foi atualizada desde entao.
+      `warner_chappell_detail` NAO usa mais esta tabela (trocado para
+      `stg_warner_statement`, ver abaixo) — mantida aqui so por
+      referencia/historico, nao usar para novas consultas.
     columns:
       id: {type: INTEGER}
       data_extrato: {type: TEXT}
@@ -345,11 +346,69 @@ detail_tables:
       amount_paid_less_tax: {type: NUMERIC}
       row_hash: {type: CHAR}
       inserted_at: {type: TIMESTAMPTZ}
+
+  warner_chappell.stg_warner_statement:
+    description: >
+      Statement Warner Chappell RAW/completo e ATUAL (34 colunas, 130.473
+      linhas, 2024-03 a 2026-03 em 2026-07-22) — fonte real usada por
+      `warner_chappell_detail` desde 2026-07-22 (troca de
+      `ft_warner_statement`, que estava congelada ha ~7 meses). Apesar do
+      nome "stg" (staging), e segura para consulta direta: unique
+      constraint em (source_file, line_number) e nenhuma duplicata de
+      row_hash observada. Tem `deal_scope_name`, ausente em
+      `ft_warner_statement` — mesmo campo usado pelo pipeline de producao
+      (`vw_debug_warner_chappell_dados_analiticos`) para o fuzzy-match
+      contra `dim_artistas.artista_keyword`, mas a taxa de match continua
+      baixa (2 de 90 artistas distintos) pela mesma razao do TODO item 9:
+      `artista_keyword` esta pouco preenchido, nao um problema desta tabela.
+    columns:
+      id: {type: INTEGER}
+      data_extrato: {type: TEXT}
+      deal_contract_brief_number: {type: TEXT}
+      deal_scope_id: {type: TEXT}
+      deal_scope_name: {type: TEXT, description: "Usado no fuzzy-match de artista do pipeline de producao (baixa cobertura — ver acima)"}
+      distribution_start: {type: TEXT}
+      distribution_end: {type: TEXT}
+      royalty_period: {type: TEXT}
+      statement_id: {type: TEXT}
+      source_income_type: {type: TEXT}
+      tango_income_type_name: {type: TEXT}
+      income_provider_name: {type: TEXT}
+      source_territory_name: {type: TEXT}
+      processing_territory_name: {type: TEXT}
+      exploitation_territory_name: {type: TEXT}
+      exploitation_source: {type: TEXT, description: "FK textual para warner_chappell.dim_exploitation_source"}
+      product_description: {type: TEXT}
+      source_work_id: {type: TEXT}
+      tango_work_code: {type: TEXT}
+      tango_work_title: {type: TEXT}
+      creator_names: {type: TEXT}
+      composer: {type: TEXT}
+      units: {type: INTEGER}
+      amount_received: {type: NUMERIC}
+      rate_percentage: {type: NUMERIC}
+      amount_paid: {type: NUMERIC}
+      tax_rate: {type: NUMERIC}
+      withholding_tax: {type: NUMERIC}
+      amount_paid_less_tax: {type: NUMERIC}
+      account_code: {type: TEXT}
+      account_name: {type: TEXT}
+      source_file: {type: TEXT}
+      line_number: {type: INTEGER}
+      inserted_at: {type: TIMESTAMPTZ}
+      row_hash: {type: CHAR}
     enrichment: >
       `warner_chappell_detail.platform` (semantic_catalog/catalog.yml) faz
       join com `warner_chappell.dim_exploitation_source` por
       (income_provider_name, exploitation_source) -> descricao_canal
-      (ex.: Spotify, Youtube, Radio, TV, Show) — implementado 2026-07-21.
+      (ex.: Spotify, Youtube, Radio, TV, Show) — implementado 2026-07-21,
+      migrado para esta tabela em 2026-07-22.
+
+  warner_chappell.stg_warner_statement_old:
+    description: >
+      Snapshot congelado (39.143 linhas, 2024-03 a 2025-12) — mesma
+      contagem/intervalo de `ft_warner_statement`, provavelmente a origem
+      dela. Nao usada por nenhuma fonte do agente.
 
   universal.dim_musica:
     description: Dimensao de faixas/musicas da Universal.
@@ -436,13 +495,15 @@ tables:
     - dim_omie_grupo
     - ft_dsu_controle_contratos
     - ft_dsu_dados_analiticos          # fonte de origem='DSU' na view unificada — ver detail_tables
-    - ft_dsu_shows_logs
     - ft_omie_dados_analiticos         # fonte de origem='Omie' na view unificada — ver detail_tables
     - ft_orchard_dados_analiticos      # fonte de origem='Orchard' na view unificada — ver detail_tables
     - ft_somlivre_sonymusic            # NAO confirmado em origem= — ver detail_tables e TODO.md item 1
     - ft_universal_dados_analiticos    # fonte de origem='Universal' na view unificada — ver detail_tables
-    - ft_warner_chappell_dados_analiticos  # fonte de origem='Warner Chappell' — ver detail_tables (preferir warner_chappell.ft_warner_statement)
+    - ft_warner_chappell_dados_analiticos  # fonte de origem='Warner Chappell' — ver detail_tables (preferir warner_chappell.stg_warner_statement)
     - ft_warner_music_dados_analiticos # fonte de origem='Warner Music' na view unificada — ver detail_tables
+    - mv_ft_dados_analiticos_agg       # materialized view, pre-agregada (artist+period+origem+revenue_type) a partir de vw_ft_dados_analiticos_union, exclui origem='Omie' — NAO usada pelo agente hoje, 332 linhas em 2026-07-22
+    - mv_ft_orchard_revenue            # materialized view por tras de ft_orchard_dados_analiticos (ver essa view)
+    - mv_ft_universal_magmedia         # materialized view por tras de ft_universal_dados_analiticos (ver essa view)
     - stg_omie_consolidado
     - stg_orchard_revenue               # + variantes stg_orchard_revenue_YYYY_MM (particionado por mes)
     - stg_somlivre_sonymusic
@@ -454,19 +515,19 @@ tables:
     - vw_debug_warner_chappell_dados_analiticos   # IGNORAR
     - vw_debug_warner_music_dados_analiticos      # IGNORAR
   universal:
-    - dim_cliente
+    - dim_cliente        # referencia (codigo_cliente/nome_cliente) — nao referenciada pela view ft_universal_dados_analiticos atual (que usa public.dim_contas)
     - dim_compositor    # ver detail_tables
-    - dim_fonte
-    - dim_grupo_renda
-    - dim_magmedia_fields
+    - dim_fonte          # ja joinada dentro de ft_universal_dados_analiticos (-> coluna canal)
+    - dim_grupo_renda    # ja joinada dentro de ft_universal_dados_analiticos (-> coluna media)
+    - dim_magmedia_fields  # metadado de nomes de campo do relatorio Magmedia — nao referenciada pela view atual
     - dim_musica        # ver detail_tables
-    - dim_tipo_renda
+    - dim_tipo_renda     # referencia de tipos de renda — nao referenciada pela view atual
     - stg_universal_magmedia
   warner_chappell:
     - dim_exploitation_source
-    - ft_warner_statement   # ver detail_tables — preferir a public.ft_warner_chappell_dados_analiticos
-    - stg_warner_statement
-    - stg_warner_statement_old
+    - ft_warner_statement   # STALE (congelada em 2025-12) — ver detail_tables, nao usar
+    - stg_warner_statement   # ATUAL — fonte real de warner_chappell_detail desde 2026-07-22, ver detail_tables
+    - stg_warner_statement_old   # snapshot congelado, provavel origem de ft_warner_statement — ver detail_tables
 
 data_quality_notes:
   public.vw_ft_dados_analiticos_union:

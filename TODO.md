@@ -119,12 +119,34 @@ Universal, Warner Chappell, Warner Music).
 
 ### Infraestrutura
 
-14. [ ] Converter CLI em tools MCP reais alem das ja existentes
-    (`generate_royalty_report` ainda pendente)
-15. [ ] Avaliar output schema mais estrito (`json_schema`) para a resposta
-    da OpenAI — reduziria a chance de o `suggested_visual` vir em formato
-    inesperado (ver nota de correcao acima)
-16. [ ] Definir contrato de artefato visual alem da sugestao
+14. [x] Verificado (2026-07-22): todo comando CLI ja tem tool MCP real
+    equivalente 1:1 (`catalog`/`config`/`diagnose-postgres`/
+    `describe-schema`/`plan-query`/`run-query`/`ask` <->
+    `get_royalty_catalog`/`get_runtime_config`/`diagnose_postgres_access`/
+    `describe_schema`/`plan_royalty_query`/`run_royalty_query`/
+    `ask_royalties`). O unico gap real e `generate_royalty_report`, que
+    depende do modulo de PDF (itens 10-13, `reporting/` ainda so tem um
+    README) — nao ha o que converter antes desse modulo existir.
+15. [x] Implementado (2026-07-22): `mcp_server/responder.py` agora envia
+    `text.format` (Structured Outputs, `json_schema` + `strict: true`) na
+    chamada `POST /v1/responses`, com o schema completo de `RoyaltyAnswer`
+    (`suggested_visual` como objeto com `type`/`x_axis`/`y_axis`/`title`,
+    tudo em `required` com `null` para opcionais). Elimina na origem a
+    classe de erro corrigida em 2026-07-01 (`y_axis` como string). Validado
+    contra a OpenAI real e dados de producao (`generation_mode: openai`,
+    `suggested_visual` com `y_axis` sempre lista).
+16. [x] Decidido (2026-07-22), sem codigo novo: o contrato de artefato
+    visual da V1 e `RoyaltyAnswer.suggested_visual` (tipo/eixos/titulo,
+    endurecido pelo item 15) + as linhas cruas de
+    `RoyaltyQueryResult.rows`. Avaliado adicionar uma grammar declarativa
+    renderizavel (Vega-Lite) e descartado: os consumidores reais
+    observados (Claude via Artifacts, Antigravity via codigo Python
+    executado) ja constroem seus proprios visuais interativos a partir dos
+    dados brutos que a tool devolve — nenhum dos dois consome uma spec
+    declarativa (Claude escreve React/Recharts, nao roda Vega-Lite), entao
+    uma grammar server-side nao pouparia trabalho real de nenhum agente.
+    Revisitar so se surgir um consumidor que realmente precise de uma
+    imagem ja renderizada (ex.: o futuro modulo de PDF, itens 10-13).
 17. [x] Transporte HTTP remoto (`mcp_http.py`, `serve-http`) portado da
     versao BigQuery e deployado em Docker em `kern-data`
     (`~/kond-royalties-mcp/`), atras do Caddy do Prefect via path
@@ -135,9 +157,17 @@ Universal, Warner Chappell, Warner Music).
     producao via Auth0 (2026-07-20). WorkOS AuthKit foi tentado primeiro e
     abandonado apos falha nao diagnosticada de `invalid_target` no token
     exchange — ver `.context/architecture-notes.md`
-19. [ ] Rotina de rotacao do token em `MCP_API_KEYS` (`kern-data:~/kond-royalties-mcp/.env`)
-20. [ ] Rotina de rotacao do client secret Auth0 (Application "Claude" no
-    tenant `dev-paer1atuombl2qf5.us.auth0.com`)
+19. [x] Rotina de rotacao do token em `MCP_API_KEYS` implementada (2026-07-22):
+    `scripts/deploy.sh` agora sincroniza `MCP_API_KEYS` do `.env` LOCAL para
+    o `.env` remoto (`kern-data:~/kond-royalties-mcp/.env`) a cada deploy —
+    rotacionar passa a ser so editar o valor localmente e rodar o deploy,
+    sem SSH manual
+20. [ ] Rotina de rotacao dos client secrets Auth0 — agora 3 Applications
+    dedicadas no tenant `dev-paer1atuombl2qf5.us.auth0.com` (Claude,
+    ChatGPT-Codex, Antigravity; ver README.md). Client ID/Secret de cada
+    uma guardados em `.env` local (`OAUTH_CLAUDE_*`/`OAUTH_CHATGPT_*`/
+    `OAUTH_ANTIGRAVITY_*`) apenas como referencia — o servidor nao le essas
+    vars, sao coladas manualmente na configuracao de cada cliente externo
 21. [x] Testar `ask_royalties` com dados reais atraves do conector
     conectado no claude.ai — confirmado (2026-07-21), resposta correta com
     dados reais de receita por artista
@@ -145,8 +175,22 @@ Universal, Warner Chappell, Warner Music).
     para `kern-data`, reconstroi a imagem, reinicia o container e roda
     smoke tests (metadados RFC 9728, token estatico, opcionalmente
     `ask_royalties` com uma pergunta real via `scripts/deploy.sh "pergunta"`)
-23. [ ] Atualizar `config/postgres_sources.yml`, `config/column_dictionary.yml`
-    e `semantic_catalog/catalog.yml` com novas tabelas/campos do schema
-    (planejado para uma proxima sessao) — testes serao feitos direto no
-    container de producao via `scripts/deploy.sh`, ja que o projeto nao e
-    critico
+23. [x] Re-introspeccao completa do schema real feita (2026-07-22),
+    achados corrigidos nos 3 arquivos de config:
+    - `ft_dsu_shows_logs` nao existe mais no banco (tabela dropada) —
+      referencia removida de `column_dictionary.yml`
+    - `warner_chappell_detail` apontava para `warner_chappell.ft_warner_statement`,
+      que se revelou STALE (congelada em 2025-12, 39.143 linhas, identica
+      a `stg_warner_statement_old` — parece uma copia pontual nunca mais
+      atualizada). Trocado para `warner_chappell.stg_warner_statement`
+      (34 colunas, 130.473 linhas, 2024-03 a 2026-03, dedup confirmado via
+      unique(source_file, line_number) e row_hash sem duplicatas) em
+      `postgres_sources.yml`/`catalog.yml`/`column_dictionary.yml`,
+      validado contra o banco real (`run_planned_query`)
+    - Documentadas 3 materialized views ate entao nao catalogadas
+      (`mv_ft_dados_analiticos_agg`, `mv_ft_orchard_revenue`,
+      `mv_ft_universal_magmedia`) e 5 tabelas de referencia da Universal
+      (`dim_cliente`/`dim_fonte`/`dim_grupo_renda`/`dim_magmedia_fields`/
+      `dim_tipo_renda`) — a maioria ja resolvida indiretamente dentro das
+      views `ft_*_dados_analiticos` existentes, sem necessidade de novo
+      join no agente

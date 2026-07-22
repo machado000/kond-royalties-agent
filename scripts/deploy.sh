@@ -3,8 +3,10 @@ set -euo pipefail
 
 # Deploy rapido de kond-royalties-mcp para kern-data: sincroniza o codigo,
 # reconstroi a imagem Docker, reinicia o container e roda smoke tests
-# contra a URL de producao. Nao toca no .env remoto (segredos ficam so no
-# host) nem no Caddyfile.
+# contra a URL de producao. Nao toca no Caddyfile. Nao toca no restante do
+# .env remoto -- exceto MCP_API_KEYS, que e sincronizado a partir do .env
+# LOCAL quando definido (permite rotacionar o token estatico editando so o
+# .env local, sem SSH manual -- ver README.md/TODO.md item 19).
 #
 # Uso:
 #   scripts/deploy.sh
@@ -15,6 +17,14 @@ cd "$(dirname "$0")/.."
 REMOTE_HOST="kern-data"
 REMOTE_DIR="kond-royalties-mcp"
 BASE_URL="https://kerndata1.ddns.net/kond-royalties-mcp/mcp"
+
+LOCAL_MCP_API_KEYS=$(grep '^MCP_API_KEYS=' .env 2>/dev/null | cut -d= -f2-)
+if [ -n "$LOCAL_MCP_API_KEYS" ]; then
+  echo "==> Sincronizando MCP_API_KEYS do .env local para ${REMOTE_HOST}..."
+  ssh "$REMOTE_HOST" "sed -i \"s|^MCP_API_KEYS=.*|MCP_API_KEYS=${LOCAL_MCP_API_KEYS}|\" ${REMOTE_DIR}/.env"
+else
+  echo "==> MCP_API_KEYS nao definido no .env local -- mantendo valor atual no host remoto."
+fi
 
 echo "==> Sincronizando codigo para ${REMOTE_HOST}..."
 rsync -az --delete \

@@ -231,9 +231,10 @@ sources:
 
   warner_chappell_detail:
     description: >
-      Statement Warner Chappell (publishing), tabela completa
-      (warner_chappell.ft_warner_statement). Tem obra (work), compositor e
-      territorio — ausentes na view unificada.
+      Statement Warner Chappell (publishing), tabela completa e atual
+      (warner_chappell.stg_warner_statement — preferida a
+      `ft_warner_statement`, que ficou congelada em 2025-12). Tem obra
+      (work), compositor e territorio — ausentes na view unificada.
     metrics:
       revenue:
         label: Valor pago (liquido de impostos)
@@ -267,8 +268,8 @@ sources:
           Radio, TV, Show.
         expression_hint: >-
           (select d.descricao_canal from warner_chappell.dim_exploitation_source d
-          where d.income_provider_name = ft_warner_statement.income_provider_name
-          and d.exploitation_source = ft_warner_statement.exploitation_source limit 1)
+          where d.income_provider_name = stg_warner_statement.income_provider_name
+          and d.exploitation_source = stg_warner_statement.exploitation_source limit 1)
       revenue_type:
         label: Tipo de receita
         expression_hint: tango_income_type_name

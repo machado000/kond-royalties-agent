@@ -77,3 +77,20 @@ para qualquer IdP compativel, nao apenas Auth0.
 
 O comando `config` foi ajustado para nao expor segredos (`OPENAI_API_KEY`,
 `DATABASE_URL`, `pg_password`) — todos redigidos na saida.
+
+## Contrato de artefato visual (2026-07-22)
+
+Avaliada e descartada uma grammar declarativa renderizavel (Vega-Lite) para
+`suggested_visual`. Os consumidores reais em uso (Claude via Artifacts,
+Antigravity via codigo Python executado) ja constroem seus proprios
+visuais interativos a partir das linhas cruas que a tool MCP devolve —
+nenhum consome uma spec declarativa (Claude escreve React/Recharts, nao
+interpreta Vega-Lite). O contrato de V1 e simplesmente
+`RoyaltyAnswer.suggested_visual` (tipo/eixos/titulo, endurecido via
+Structured Outputs da OpenAI — `text.format`/`json_schema`/`strict` em
+`mcp_server/responder.py`) + `RoyaltyQueryResult.rows`. Revisitar so se
+surgir um consumidor que precise de uma imagem ja renderizada (ex.: modulo
+de PDF, TODO.md itens 10-13) — nesse caso, a rota mais compativel entre
+agentes (Claude/ChatGPT/Gemini) seria devolver um PNG via content block
+`image` nativo do MCP, nao uma spec declarativa (nenhum desses agentes
+renderiza Vega-Lite/Plotly/Chart.js nativamente a partir de JSON de texto).

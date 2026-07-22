@@ -139,6 +139,33 @@ def _extract_response_text(payload: dict[str, Any]) -> str:
     return "\n".join(chunks).strip()
 
 
+# Structured Outputs (Responses API `text.format`) -- forca a OpenAI a devolver
+# exatamente esse formato, eliminando a classe de erro corrigida em
+# 2026-07-01 (`y_axis` vindo como string em vez de lista). Modo strict exige
+# todo campo em `required`; campos opcionais usam `type: [T, "null"]`.
+_ANSWER_JSON_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "answer_markdown": {"type": "string"},
+        "summary": {"type": "string"},
+        "suggested_visual": {
+            "type": "object",
+            "properties": {
+                "type": {"type": "string"},
+                "x_axis": {"type": ["string", "null"]},
+                "y_axis": {"type": "array", "items": {"type": "string"}},
+                "title": {"type": ["string", "null"]},
+            },
+            "required": ["type", "x_axis", "y_axis", "title"],
+            "additionalProperties": False,
+        },
+        "suggested_followups": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["answer_markdown", "summary", "suggested_visual", "suggested_followups"],
+    "additionalProperties": False,
+}
+
+
 def generate_openai_answer(plan: PlannedQuery, result: RoyaltyQueryResult) -> RoyaltyAnswer:
     settings = load_app_settings()
     if not settings.openai_api_key:
@@ -154,11 +181,6 @@ def generate_openai_answer(plan: PlannedQuery, result: RoyaltyQueryResult) -> Ro
         "metric_totals": _metric_totals(plan, result),
         "suggested_visual": suggest_visual(plan),
     }
-    instructions = (
-        f"{system_prompt}\n\n"
-        "Responda somente em JSON valido com as chaves: "
-        "`answer_markdown`, `summary`, `suggested_visual`, `suggested_followups`."
-    )
     response = requests.post(
         "https://api.openai.com/v1/responses",
         headers={
@@ -167,10 +189,18 @@ def generate_openai_answer(plan: PlannedQuery, result: RoyaltyQueryResult) -> Ro
         },
         json={
             "model": settings.openai_model,
-            "instructions": instructions,
+            "instructions": system_prompt,
             "input": json.dumps(user_prompt, ensure_ascii=False),
             "temperature": 0.2,
             "max_output_tokens": 800,
+            "text": {
+                "format": {
+                    "type": "json_schema",
+                    "name": "royalty_answer",
+                    "schema": _ANSWER_JSON_SCHEMA,
+                    "strict": True,
+                }
+            },
         },
         timeout=60,
     )

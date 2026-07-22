@@ -66,7 +66,10 @@ scripts/deploy.sh "Como foi a receita por artista nos ultimos 90 dias?"  # + tes
 Sincroniza o codigo para `kern-data`, reconstroi a imagem, reinicia o
 container e roda smoke tests (metadados RFC 9728, token estatico, e
 opcionalmente um `ask_royalties` real se uma pergunta for passada). Nao
-toca no `.env` remoto nem no Caddyfile.
+toca no Caddyfile nem no restante do `.env` remoto — exceto
+`MCP_API_KEYS`, que e sincronizado a partir do `.env` LOCAL quando
+definido. Para rotacionar o token estatico: editar `MCP_API_KEYS` no
+`.env` local e rodar `scripts/deploy.sh` normalmente.
 
 ### Imagem e container
 
@@ -179,39 +182,57 @@ dedicado. Passo a passo:
 2. **Critico**: em **Settings → Advanced → Settings**, habilitar
    **Resource Parameter Compatibility Profile** e **Include Issuer in
    Authorization Responses** (tenant-wide). Sem isso, o Auth0 ignora
-   silenciosamente o parametro `resource` que o claude.ai envia (RFC 8707)
-   e cai no comportamento legado baseado em `audience` — o sintoma e um
-   erro de token exchange sem pista clara da causa.
+   silenciosamente o parametro `resource` que os conectores enviam (RFC
+   8707) e cai no comportamento legado baseado em `audience` — o sintoma e
+   um erro de token exchange sem pista clara da causa.
 3. **Applications → APIs → Create API**: Identifier = `OAUTH_RESOURCE_URL`
    exato (ex.: `https://kerndata1.ddns.net/kond-royalties-mcp/mcp`),
-   Signing Algorithm RS256.
-4. **Applications → Applications → Create Application**: tipo *Regular Web
-   Application*, com **Allowed Callback URLs** incluindo
-   `https://claude.ai/api/mcp/auth_callback` e
-   `https://claude.com/api/mcp/auth_callback`. Confirmar na aba **APIs**
-   que essa aplicacao esta autorizada contra a API criada no passo 3.
-5. Usar o **Domain** da aplicacao (com `https://` na frente) como
-   `OAUTH_ISSUER_URL`, e o **Client ID**/**Client Secret** ao adicionar o
-   conector no claude.ai (ver abaixo).
+   Signing Algorithm RS256. Por padrao a API exige **Client Grant**
+   explicito para autorizar qualquer client (`subject_type_authorization`
+   com policy `require_client_grant` para `user` e `client`) — isso vale
+   para toda aplicacao, first-party ou nao, entao o passo 5 abaixo e
+   obrigatorio para cada client novo.
+4. **Uma Application dedicada por cliente** (tipo *Regular Web
+   Application*, first-party), cada uma com seu proprio **Allowed Callback
+   URL** fixo — nao compartilhar a mesma Application entre clientes
+   diferentes. Ver a tabela de modalidades de conexao abaixo para o
+   callback exato de cada um.
+5. Para cada Application criada, autorizar contra a API do passo 3
+   (**Applications → [App] → APIs**, ou via Management API
+   `POST /api/v2/client-grants` com `subject_type: "user"` — necessario
+   para o fluxo Authorization Code com login real de usuario, distinto do
+   `subject_type: "client"` usado em Client Credentials/M2M).
+6. Usar o **Domain** do tenant (com `https://` na frente) como
+   `OAUTH_ISSUER_URL`, e o **Client ID**/**Client Secret** de cada
+   Application ao configurar o respectivo cliente (ver abaixo).
+
+**Dynamic Client Registration (DCR) fica desabilitado**
+(`Settings → Advanced → OIDC Dynamic Application Registration`, ou via
+Management API `PATCH /api/v2/tenants/settings` com
+`flags.enable_dynamic_client_registration: false`). Clientes que suportam
+DCR (ChatGPT/Codex, Antigravity) registram uma Application nova e efemera
+a cada conexao — no free tier do Auth0 isso estoura rapido o limite de
+apps do tenant e passa a bloquear login de novos usuarios. Com DCR
+desligado, todo cliente usa uma Application predefinida (passo 4) com
+credenciais coladas manualmente na configuracao do cliente.
 
 ### Conectando clientes ao servidor remoto
 
-**claude.ai (Settings → Connectors → Add → Custom Connectors)**:
+Quatro modalidades de conexao suportadas, todas contra a mesma URL
+(`https://kerndata1.ddns.net/kond-royalties-mcp/mcp`):
 
-- Nome: livre
-- Remote MCP server URL: `https://kerndata1.ddns.net/kond-royalties-mcp/mcp`
-- Advanced settings → OAuth Client ID / OAuth Client Secret: os valores da
-  Application Auth0 criada acima
+| Modalidade | Cliente | Autenticacao |
+|---|---|---|
+| Bearer estatico | scripts, curl, clientes sem suporte a OAuth | Header `Authorization` direto |
+| OAuth (Application dedicada) | claude.ai | Login Auth0 + consentimento |
+| OAuth (Application dedicada) | ChatGPT / Codex | Login Auth0 + consentimento |
+| OAuth (Application dedicada) | Antigravity | Login Auth0 + consentimento |
 
-Ao clicar Connect, o fluxo redireciona para o login do Auth0, pede
-consentimento e volta para o claude.ai com o conector conectado — DCR
-(Dynamic Client Registration) **nao** e necessario, o claude.ai suporta
-credenciais inseridas manualmente.
+#### Bearer estatico
 
-**Antigravity, scripts, outros clientes com suporte a MCP remoto +
-header customizado**: usar o token estatico (`MCP_API_KEYS`) direto, sem
-OAuth. Formato `mcpServers` (Antigravity usa `serverUrl`; outros clientes
-podem usar `url`):
+Para scripts e clientes MCP que aceitam um header customizado direto, sem
+fluxo OAuth. Formato `mcpServers` (alguns clientes usam `serverUrl`,
+outros `url` — checar a documentacao do cliente especifico):
 
 ```json
 {
@@ -225,6 +246,47 @@ podem usar `url`):
   }
 }
 ```
+
+#### OAuth — claude.ai
+
+Settings → Connectors → Add → Custom Connectors:
+
+- Nome: livre
+- Remote MCP server URL: `https://kerndata1.ddns.net/kond-royalties-mcp/mcp`
+- Advanced settings → OAuth Client ID / OAuth Client Secret: valores da
+  Application Auth0 "Claude" (callback
+  `https://claude.ai/api/mcp/auth_callback` e
+  `https://claude.com/api/mcp/auth_callback`)
+
+Ao clicar Connect, o fluxo redireciona para o login do Auth0, pede
+consentimento e volta para o claude.ai com o conector conectado.
+
+#### OAuth — ChatGPT / Codex
+
+Desde a fusao dos dois produtos no app desktop, o cliente que aparece na
+tela de consentimento do Auth0 se chama "Codex" independente de qual dos
+dois foi usado para iniciar a conexao.
+
+Pre-requisito: habilitar **Developer Mode** em chatgpt.com (Configuracoes
+→ Conectores → Avancado, ou Configuracoes de Workspace → Permissoes,
+dependendo do tipo de conta) — o app desktop sozinho nao consegue invocar
+tools de conectores customizados sem isso, mesmo que a conexao apareca
+como bem-sucedida.
+
+Ao adicionar o conector (URL do servidor + credenciais OAuth avancadas),
+usar o Client ID / Client Secret da Application Auth0 "ChatGPT-Codex"
+(callback fixo `https://chatgpt.com/connector_platform_oauth_redirect`).
+Sem uma Application dedicada, o ChatGPT tentaria DCR automaticamente — ver
+nota sobre DCR desabilitado acima.
+
+#### OAuth — Antigravity
+
+Configuracao central de MCP do Antigravity
+(`~/.gemini/config/mcp_config.json`), com `clientId`/`clientSecret`
+explicitos da Application Auth0 "Antigravity" (callback fixo
+`https://antigravity.google/oauth-callback`). Sem essas credenciais
+explicitas, o Antigravity tentaria DCR automaticamente (suportado
+nativamente pelo cliente) — ver nota sobre DCR desabilitado acima.
 
 ### Verificacao pos-deploy
 

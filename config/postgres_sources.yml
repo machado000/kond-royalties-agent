@@ -80,12 +80,15 @@ logical_sources:
     table: dim_compositor
   warner_chappell_detail:
     description: >
-      Statement Warner Chappell RAW/completo (23 colunas, com breakdown
-      fiscal e detalhe de obra/compositor) — preferir a
+      Statement Warner Chappell RAW/completo (34 colunas, com breakdown
+      fiscal, detalhe de obra/compositor e deal_scope_name) — tabela de
+      staging, mas deduplicada (unique em source_file+line_number) e mais
+      atual que `warner_chappell.ft_warner_statement`, que ficou
+      congelada em 2025-12 (ver column_dictionary.yml). Preferir esta a
       `public.ft_warner_chappell_dados_analiticos` (versao simplificada,
       11 colunas) para analises detalhadas.
     schema: warner_chappell
-    table: ft_warner_statement
+    table: stg_warner_statement
   warner_music_detail:
     description: >
       Statement Warner Music (fonte de origem='Warner Music') — tem faixa,
