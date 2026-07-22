@@ -272,9 +272,11 @@ detail_tables:
   public.ft_warner_chappell_dados_analiticos:
     description: >
       Versao simplificada do statement Warner Chappell (fonte de
-      origem='Warner Chappell' na view unificada). Preferir
-      `warner_chappell.stg_warner_statement` (11 vs 34 colunas, e mais
-      atual) para analises detalhadas — ver essa tabela abaixo.
+      origem='Warner Chappell' na view unificada) — desde 2026-07-22 join
+      direto com `warner_chappell.stg_warner_statement` (antes usava a
+      base `ft_warner_statement`, sem impacto pratico ja que ambas agora
+      leem da mesma fonte). Preferir `warner_chappell.stg_warner_statement`
+      (11 vs 34 colunas) para analises detalhadas — ver essa tabela abaixo.
     columns:
       id: {type: INTEGER}
       data_extrato: {type: TEXT}
@@ -316,12 +318,16 @@ detail_tables:
 
   warner_chappell.ft_warner_statement:
     description: >
-      STALE (descoberto 2026-07-22): congelada em 2025-12 (39.143 linhas),
-      identica em contagem/intervalo a `stg_warner_statement_old` — parece
-      ter sido uma copia pontual que nunca foi atualizada desde entao.
-      `warner_chappell_detail` NAO usa mais esta tabela (trocado para
-      `stg_warner_statement`, ver abaixo) — mantida aqui so por
-      referencia/historico, nao usar para novas consultas.
+      Estava STALE ate 2026-07-22 (congelada em 2025-12, copia pontual de
+      `stg_warner_statement_old` que nunca foi atualizada) — corrigido no
+      mesmo dia: a tabela base foi dropada e recriada como VIEW sobre
+      `warner_chappell.stg_warner_statement`, entao agora esta sempre
+      atualizada automaticamente. Continua com o subconjunto original de
+      23 colunas (sem `deal_scope_name`, `distribution_start/end`,
+      `account_name` etc., presentes em `stg_warner_statement`).
+      `warner_chappell_detail` continua apontando direto para
+      `stg_warner_statement` (mais colunas) — nao ha motivo para trocar de
+      volta, mas nao ha mais problema de atualidade em usar esta view.
     columns:
       id: {type: INTEGER}
       data_extrato: {type: TEXT}

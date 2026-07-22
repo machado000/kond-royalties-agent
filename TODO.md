@@ -186,7 +186,14 @@ Universal, Warner Chappell, Warner Music).
       (34 colunas, 130.473 linhas, 2024-03 a 2026-03, dedup confirmado via
       unique(source_file, line_number) e row_hash sem duplicatas) em
       `postgres_sources.yml`/`catalog.yml`/`column_dictionary.yml`,
-      validado contra o banco real (`run_planned_query`)
+      validado contra o banco real (`run_planned_query`). Root cause
+      corrigido do lado do banco no mesmo dia (fora deste repo):
+      `ft_warner_statement` foi dropada e recriada como VIEW sobre
+      `stg_warner_statement` (sempre atualizada dai em diante), e
+      `public.ft_warner_chappell_dados_analiticos` passou a ler direto de
+      `stg_warner_statement` — `warner_chappell_detail` continua em
+      `stg_warner_statement` (mais colunas), mas a staleness em si nao
+      existe mais em nenhuma das duas views
     - Documentadas 3 materialized views ate entao nao catalogadas
       (`mv_ft_dados_analiticos_agg`, `mv_ft_orchard_revenue`,
       `mv_ft_universal_magmedia`) e 5 tabelas de referencia da Universal
