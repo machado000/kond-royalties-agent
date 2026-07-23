@@ -18,16 +18,25 @@ deduplicacao por contrato (ver abaixo):
    tem contrato CONFIRMADO para um dado artista — ou seja, dias bons que
    a equipe de booking ainda pode vender.
 
+**As duas perguntas ja tem tools MCP dedicadas** (2026-07-23):
+`dsu_booking_quality` (`artist` opcional) e `dsu_missed_opportunities`
+(`artist` e `lookahead_days` opcionais, default 90) —
+`mcp_server/dsu_analytics.py`, expostas via stdio, HTTP e CLI
+(`kond-royalties-mcp dsu-booking-quality`/`dsu-missed-opportunities`).
+Se estiver rodando dentro do Claude Code com acesso a essas tools MCP,
+**prefira chama-las diretamente** em vez de rodar SQL manualmente — elas
+implementam exatamente as queries abaixo, ja testadas contra producao.
+As queries SQL ficam documentadas aqui como referencia (o que as tools
+fazem por baixo) e como fallback caso as tools nao estejam disponiveis
+(ex.: sessao sem o servidor MCP conectado, mas com acesso direto ao
+Postgres via `.env`: `DATABASE_URL` ou
+`PGHOST`/`PGPORT`/`PGDATABASE`/`PGUSER`/`PGPASSWORD`, via `psql` ou um
+script curto com `psycopg`). Manter as duas em sincronia se uma mudar.
+
 `ft_dsu_controle_contratos`/`dim_calendario` tambem estao disponiveis via
 `dsu_detail` no catalogo semantico (`plan_royalty_query`/
 `run_royalty_query`/`ask_royalties`) para perguntas simples sobre
-`contratante`/`vendedor`/`tipo_evento`/`local`/`status`. Mas as duas
-perguntas acima envolvem um anti-join ("datas sem contrato
-correspondente") que esse mecanismo nao expressa — por isso rode as
-queries SQL abaixo diretamente no Postgres, usando a mesma conexao ja
-configurada no projeto (`.env`: `DATABASE_URL` ou
-`PGHOST`/`PGPORT`/`PGDATABASE`/`PGUSER`/`PGPASSWORD`), via `psql` ou um
-script curto com `psycopg`. Sao consultas somente leitura.
+`contratante`/`vendedor`/`tipo_evento`/`local`/`status`.
 
 ## Fatos importantes sobre os dados (nao redescobrir)
 

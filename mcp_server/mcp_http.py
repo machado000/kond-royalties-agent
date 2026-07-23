@@ -21,6 +21,8 @@ from mcp_server.service import (
     get_ask_payload,
     get_catalog_payload,
     get_config_payload,
+    get_dsu_booking_quality_payload,
+    get_dsu_missed_opportunities_payload,
     get_plan_payload,
     get_postgres_diagnostics_payload,
     get_run_query_payload,
@@ -122,6 +124,20 @@ def _ask_tool(question: str, limit: int = 100, source: str | None = None) -> dic
     return payload
 
 
+def _dsu_booking_quality_tool(artist: str | None = None) -> dict[str, Any]:
+    status_code, payload = get_dsu_booking_quality_payload(artist=artist)
+    if status_code != 0:
+        raise ToolError(json.dumps(payload, ensure_ascii=False))
+    return payload
+
+
+def _dsu_missed_opportunities_tool(artist: str | None = None, lookahead_days: int = 90) -> dict[str, Any]:
+    status_code, payload = get_dsu_missed_opportunities_payload(artist=artist, lookahead_days=lookahead_days)
+    if status_code != 0:
+        raise ToolError(json.dumps(payload, ensure_ascii=False))
+    return payload
+
+
 mcp.tool(
     name="get_royalty_catalog",
     title="Royalty Catalog",
@@ -178,6 +194,25 @@ mcp.tool(
         f"Executa a consulta e devolve resposta executiva em portugues do Brasil. `source`: {_SOURCE_DESCRIPTION}"
     ),
 )(_ask_tool)
+
+mcp.tool(
+    name="dsu_booking_quality",
+    title="DSU Booking Quality",
+    description=(
+        "Percentual dos shows DSU CONFIRMADO de cada artista (ou de um artista especifico) "
+        "que caem em 'dia_critico' (sexta/sabado/vespera de feriado -- as melhores noites "
+        "para um show). Indicador de qualidade de agendamento."
+    ),
+)(_dsu_booking_quality_tool)
+
+mcp.tool(
+    name="dsu_missed_opportunities",
+    title="DSU Missed Opportunities",
+    description=(
+        "Datas futuras de 'dia_critico' que ainda nao tem contrato CONFIRMADO para um "
+        "artista DSU -- oportunidades de venda ainda nao aproveitadas pela equipe de booking."
+    ),
+)(_dsu_missed_opportunities_tool)
 
 
 class BearerAuthMiddleware:

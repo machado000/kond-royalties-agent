@@ -15,25 +15,26 @@ DEFAULT_METRICS = ["quantity", "revenue"]
 DEFAULT_DIMENSION = ["artist"]
 
 METRIC_KEYWORDS = {
-    "quantity": ["quantidade", "streams", "unidades", "shows", "quantity"],
+    "quantity": ["quantidade", "streams", "unidades", "shows", "quantity",
+                 "reproduções", "reproducoes", "playback", "plays", "play"],
     "revenue": ["receita", "royalties", "repasse", "faturamento", "revenue"],
 }
 
 DIMENSION_KEYWORDS = {
-    "artist": ["artista", "artist"],
-    "origem": ["origem", "distribuidora", "sistema de origem"],
+    "artist": ["artista", "artist", "cantor", "cantora"],
+    "origem": ["origem", "distribuidora", "sistema de origem", "publisher"],
     "revenue_type": ["tipo de receita", "categoria de receita", "revenue type"],
     "period": ["periodo", "por mes", "por data", "mensal"],
-    "track": ["faixa", "musica", "cancao", "track"],
+    "track": ["faixa", "musica", "música", "cancao", "canção", "track"],
     "composer": ["compositor", "composer"],
     "isrc": ["isrc"],
     "territory": ["territorio", "pais", "country"],
     "platform": ["plataforma", "dsp", "canal"],
-    "gravadora": ["gravadora", "label", "selo"],
+    "gravadora": ["gravadora", "label", "selo", "master", "master rights"],
     "contratante": ["contratante"],
-    "vendedor": ["vendedor", "responsavel comercial"],
+    "vendedor": ["vendedor", "responsavel comercial", "agente comercial"],
     "tipo_evento": ["tipo de evento", "tipo evento"],
-    "dia_critico": ["dia critico", "dia ideal"],
+    "dia_critico": ["dia critico", "dia ideal", "noite livre", "dia de show", "dia de evento"],
 }
 
 # Valores gravados na coluna `origem` (ver config/column_dictionary.yml).
@@ -43,14 +44,14 @@ FILTER_KEYWORDS = {
         "Omie": ["omie"],
         "Orchard": ["orchard"],
         "Universal": ["universal"],
-        "Warner Chappell": ["warner chappell", "warner chappel"],
+        "Warner Chappell": ["warner chappell", "warner chappel", "warner chapel"],
         "Warner Music": ["warner music"],
     },
     "revenue_type": {
-        "Editora": ["editora", "publishing"],
-        "Gravadora": ["gravadora", "master"],
+        "Editora": ["editora", "publisher", "publishing"],
+        "Gravadora": ["gravadora", "master", "label", "selo", "master rights"],
         "Publicidade": ["publicidade", "advertising"],
-        "Shows": ["shows", "show ao vivo"],
+        "Shows": ["shows", "show ao vivo", "evento", "eventos", "contrato de show"],
     },
 }
 

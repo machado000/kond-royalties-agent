@@ -10,6 +10,8 @@ from mcp_server.service import (
     get_ask_payload,
     get_catalog_payload,
     get_config_payload,
+    get_dsu_booking_quality_payload,
+    get_dsu_missed_opportunities_payload,
     get_plan_payload,
     get_postgres_diagnostics_payload,
     get_run_query_payload,
@@ -111,6 +113,56 @@ TOOLS = [
                 },
             },
             "required": ["question"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "dsu_booking_quality",
+        "title": "DSU Booking Quality",
+        "description": (
+            "Percentual dos shows DSU CONFIRMADO de cada artista (ou de um artista "
+            "especifico) que caem em 'dia_critico' (sexta/sabado/vespera de feriado -- "
+            "as melhores noites para um show). Indicador de qualidade de agendamento."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "artist": {
+                    "type": "string",
+                    "description": (
+                        "Nome exato do artista (ver `dsu_detail` no catalogo). "
+                        "Se omitido, retorna todos os 7 artistas DSU."
+                    ),
+                },
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "dsu_missed_opportunities",
+        "title": "DSU Missed Opportunities",
+        "description": (
+            "Datas futuras de 'dia_critico' que ainda nao tem contrato CONFIRMADO para "
+            "um artista DSU -- oportunidades de venda ainda nao aproveitadas pela equipe "
+            "de booking."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "artist": {
+                    "type": "string",
+                    "description": (
+                        "Nome exato do artista. Se omitido, retorna datas livres "
+                        "de todos os 7 artistas DSU."
+                    ),
+                },
+                "lookahead_days": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "default": 90,
+                    "description": "Janela de dias a partir de hoje para buscar datas livres.",
+                },
+            },
             "additionalProperties": False,
         },
     },
@@ -231,6 +283,14 @@ def _handle_tool_call(message_id: Any, params: dict[str, Any]) -> dict[str, Any]
             question = arguments["question"]
             status_code, payload = get_ask_payload(
                 question=question, limit=_coerce_limit(arguments), source=arguments.get("source")
+            )
+            result = _text_result(payload, is_error=status_code != 0)
+        elif tool_name == "dsu_booking_quality":
+            status_code, payload = get_dsu_booking_quality_payload(artist=arguments.get("artist"))
+            result = _text_result(payload, is_error=status_code != 0)
+        elif tool_name == "dsu_missed_opportunities":
+            status_code, payload = get_dsu_missed_opportunities_payload(
+                artist=arguments.get("artist"), lookahead_days=arguments.get("lookahead_days", 90)
             )
             result = _text_result(payload, is_error=status_code != 0)
         else:

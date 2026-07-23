@@ -11,6 +11,8 @@ from mcp_server.service import (
     get_ask_payload,
     get_catalog_payload,
     get_config_payload,
+    get_dsu_booking_quality_payload,
+    get_dsu_missed_opportunities_payload,
     get_plan_payload,
     get_postgres_diagnostics_payload,
     get_run_query_payload,
@@ -47,6 +49,15 @@ def build_parser() -> argparse.ArgumentParser:
     ask_parser.add_argument("--question", required=True)
     ask_parser.add_argument("--limit", type=int, default=100)
     ask_parser.add_argument("--source", default=None, help="Fonte a consultar (ver comando 'catalog'). Se omitido, e inferida da pergunta.")
+    booking_quality_parser = subparsers.add_parser(
+        "dsu-booking-quality", help="Percentual dos shows DSU CONFIRMADO em dia_critico, por artista."
+    )
+    booking_quality_parser.add_argument("--artist", default=None, help="Nome exato do artista. Se omitido, retorna todos.")
+    missed_opportunities_parser = subparsers.add_parser(
+        "dsu-missed-opportunities", help="Datas futuras de dia_critico sem contrato CONFIRMADO, por artista."
+    )
+    missed_opportunities_parser.add_argument("--artist", default=None, help="Nome exato do artista. Se omitido, retorna todos.")
+    missed_opportunities_parser.add_argument("--lookahead-days", type=int, default=90)
     return parser
 
 
@@ -81,6 +92,16 @@ def main() -> None:
         raise SystemExit(status_code)
     if args.command == "ask":
         status_code, payload = get_ask_payload(args.question, args.limit, source=args.source)
+        _emit(payload)
+        raise SystemExit(status_code)
+    if args.command == "dsu-booking-quality":
+        status_code, payload = get_dsu_booking_quality_payload(artist=args.artist)
+        _emit(payload)
+        raise SystemExit(status_code)
+    if args.command == "dsu-missed-opportunities":
+        status_code, payload = get_dsu_missed_opportunities_payload(
+            artist=args.artist, lookahead_days=args.lookahead_days
+        )
         _emit(payload)
         raise SystemExit(status_code)
 

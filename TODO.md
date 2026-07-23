@@ -222,3 +222,30 @@ Universal, Warner Chappell, Warner Music).
       `dim_tipo_renda`) — a maioria ja resolvida indiretamente dentro das
       views `ft_*_dados_analiticos` existentes, sem necessidade de novo
       join no agente
+24. [x] Skill `dsu-dia-critico` criada (2026-07-23,
+    `.claude/skills/dsu-dia-critico/`) para qualidade de agendamento DSU:
+    % de shows CONFIRMADO em `dia_critico` (sexta/sabado/vespera de
+    feriado) por artista, e datas futuras de `dia_critico` sem contrato
+    CONFIRMADO (oportunidade de venda perdida). Criada
+    `public.vw_dsu_contratos_calendario` (view) para dar suporte barato a
+    uso repetido: dedup de `ft_dsu_controle_contratos` por `contrato`
+    (25 contratos tinham 2 linhas — transicao de status ao longo do
+    tempo, mantida so `max(inserted_at)`) + LEFT JOIN com
+    `dim_calendario`. `dsu_detail` (catalogo semantico) migrado para essa
+    view (antes `ft_dsu_dados_analiticos`), ganhando `contratante`/
+    `vendedor`/`tipo_evento`/`tag`/`dia_critico` como dimensoes.
+25. [x] Tools MCP `dsu_booking_quality` e `dsu_missed_opportunities`
+    criadas (2026-07-23, `mcp_server/dsu_analytics.py`) implementando as
+    duas queries do skill acima como tools reais — expostas via stdio,
+    HTTP e CLI (`dsu-booking-quality`/`dsu-missed-opportunities`),
+    mantendo a paridade CLI/MCP 1:1 do item 14. Corrigido durante o
+    desenvolvimento: `data_livre` (coluna DATE) nao era serializavel para
+    JSON via `mcp_stdio.py` (sem `default=str`, ao contrario do CLI) —
+    `_normalize_value` agora converte `date`/`datetime` para ISO string,
+    alem do `Decimal` ja tratado em `query_runner.py`. Validado ponta a
+    ponta em producao (CLI + `tools/call` HTTP real).
+26. [ ] Avaliar se vale expor `ft_dsu_controle_contratos` (tabela raw,
+    nao deduplicada, com as 25 linhas de transicao de status visiveis)
+    como fonte separada para auditoria de historico de status — hoje so
+    `vw_dsu_contratos_calendario` (deduplicada) e exposta; nao implementado
+    por falta de caso de uso concreto ainda.

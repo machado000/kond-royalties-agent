@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from mcp_server.catalog import build_catalog_payload
+from mcp_server.dsu_analytics import get_dsu_booking_quality, get_dsu_missed_opportunities
 from mcp_server.models import RoyaltyQueryRequest
 from mcp_server.planner import plan_royalty_query
 from mcp_server.postgres import describe_schema, list_accessible_schemas
@@ -91,6 +92,26 @@ def get_run_query_payload(question: str, limit: int, source: str | None = None) 
         "plan": plan.model_dump(),
         "result": result.model_dump(),
     }
+
+
+def get_dsu_booking_quality_payload(artist: str | None = None) -> tuple[int, dict[str, object]]:
+    try:
+        result = get_dsu_booking_quality(artist=artist)
+    except Exception as exc:
+        return 1, {"status": "error", "artist": artist, "error": str(exc)}
+
+    return 0, {"status": "ok", "result": result.model_dump()}
+
+
+def get_dsu_missed_opportunities_payload(
+    artist: str | None = None, lookahead_days: int = 90
+) -> tuple[int, dict[str, object]]:
+    try:
+        result = get_dsu_missed_opportunities(artist=artist, lookahead_days=lookahead_days)
+    except Exception as exc:
+        return 1, {"status": "error", "artist": artist, "error": str(exc)}
+
+    return 0, {"status": "ok", "result": result.model_dump()}
 
 
 def get_ask_payload(question: str, limit: int, source: str | None = None) -> tuple[int, dict[str, object]]:
