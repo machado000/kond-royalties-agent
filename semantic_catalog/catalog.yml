@@ -83,25 +83,25 @@ sources:
   dsu_detail:
     description: >
       Contratos e shows ao vivo (DSU). Sem dimensao de faixa/musica —
-      artista e data apenas, mais detalhe de local/evento.
+      artista e data apenas, mais detalhe de local/evento/contrato. Fonte
+      `vw_dsu_contratos_calendario` ja deduplicada por contrato (linha
+      mais recente por status) — `count(*)` conta contratos reais, sem
+      risco de contagem dupla.
     metrics:
       revenue:
         label: Receita
         expression_hint: sum(valor_liquido)
       shows:
         label: Shows
-        description: Numero de shows/contratos (contagem de linhas).
+        description: Numero de shows/contratos (contagem de linhas, ja deduplicada por contrato).
         expression_hint: count(*)
     dimensions:
       period:
         label: Periodo
       artist:
         label: Artista
-        expression_hint: "coalesce((select da.nome_artistico from dim_artistas da where da.dsu_artista = artista limit 1), artista)"
-        description: >
-          Nome normalizado quando ha match exato contra
-          dim_artistas.dsu_artista (6 de 7 artistas do DSU cobertos);
-          cai para o nome bruto quando nao ha match.
+        expression_hint: artista
+        description: "Nome bruto do artista (formato 'CODIGO - Nome Artistico') — sem match contra dim_artistas."
       territory:
         label: UF
         expression_hint: uf
@@ -113,7 +113,30 @@ sources:
         expression_hint: local
       status:
         label: Status
+        description: >
+          CONFIRMADO, FINANCEIRO/AGUARDAR (aguardando confirmacao
+          financeira, data ja reservada), CANCELADO/REMARCAR (cancelado —
+          data livre novamente) ou QUALIDADE (1 linha isolada).
         expression_hint: status
+      contratante:
+        label: Contratante
+        description: Parte contratante do show.
+        expression_hint: contratante
+      vendedor:
+        label: Vendedor
+        description: Responsavel comercial pela venda do contrato.
+        expression_hint: vendedor
+      tipo_evento:
+        label: Tipo de evento
+        expression_hint: tipo_evento
+      dia_critico:
+        label: Dia critico
+        description: >
+          Se a data do show cai num "dia critico" (sexta, sabado ou
+          vespera de feriado — as melhores noites para um show, ja que o
+          publico nao precisa acordar cedo no dia seguinte). Null para
+          shows antes de 2026-01-01 (fora da cobertura de dim_calendario).
+        expression_hint: dia_critico
 
   omie_detail:
     description: >

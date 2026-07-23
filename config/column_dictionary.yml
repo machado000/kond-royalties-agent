@@ -15,7 +15,7 @@
 #
 # REGRA CRITICA — NAO AGREGAR ENTRE NIVEIS: `public.vw_ft_dados_analiticos_union`
 # e as `detail_tables` abaixo (`ft_*_dados_analiticos`, `ft_somlivre_sonymusic`,
-# `warner_chappell.ft_warner_statement`) representam OS MESMOS EVENTOS em
+# `warner_chappell.ft_warner_statement`, `vw_dsu_contratos_calendario`) representam OS MESMOS EVENTOS em
 # niveis de granularidade diferentes. Somar/agregar valores da view unificada
 # junto com valores de uma detail_table (ou de duas detail_tables entre si)
 # DUPLICA receita/quantidade ja contabilizada. Usar a view unificada para
@@ -135,7 +135,14 @@ canonical_columns:
 detail_tables:
 
   public.ft_dsu_dados_analiticos:
-    description: Contratos e shows ao vivo (fonte de origem='DSU' na view unificada).
+    description: >
+      Contratos e shows ao vivo (fonte de origem='DSU' na view unificada).
+      SUPERSEDIDA para uso do agente (2026-07-23): `dsu_detail` agora
+      aponta para `public.vw_dsu_contratos_calendario` (ver abaixo), que
+      cobre as mesmas colunas mais dedup por contrato e enriquecimento com
+      `dim_calendario`. Esta view continua existindo e alimentando
+      `vw_ft_dados_analiticos_union` (origem='DSU'), so nao e mais a fonte
+      direta de `dsu_detail`.
     columns:
       id: {type: INTEGER}
       dt_cadastro: {type: DATE, description: Data de cadastro do contrato}
@@ -151,6 +158,102 @@ detail_tables:
       valor_liquido: {type: REAL, description: Valor liquido do contrato}
       periodo: {type: TEXT, description: "Periodo 'AAAA-MM', equivalente ao `period` da view unificada"}
       source_file: {type: TEXT}
+
+  public.ft_dsu_controle_contratos:
+    description: >
+      Tabela base por tras de `ft_dsu_dados_analiticos` e (via a nova
+      view) de `dsu_detail`. 1.363 linhas (2026-07-22), `dt_show` de
+      2025-08-01 a 2027-12-31 (482 linhas ja no futuro — pipeline de
+      booking vivo, nao so historico). **25 `contrato` tem 2 linhas**
+      (mesmo contrato/dt_show/valor, `status`/`inserted_at` diferentes —
+      transicao de status ao longo do tempo, ex.: `FINANCEIRO/AGUARDAR`
+      -> `CONFIRMADO`, ou `CONFIRMADO` -> `CANCELADO/REMARCAR`), NAO dois
+      shows — qualquer consulta direta a esta tabela deve deduplicar por
+      `contrato` mantendo so `max(inserted_at)`, ou usar
+      `vw_dsu_contratos_calendario` (abaixo), que ja faz isso. `status`
+      tem 4 valores: `CONFIRMADO` (885), `FINANCEIRO/AGUARDAR` (362,
+      aguardando financeiro mas data reservada), `CANCELADO/REMARCAR`
+      (115, data livre novamente) e `QUALIDADE` (1, isolado). So 7
+      artistas distintos fazem shows DSU.
+    columns:
+      id: {type: INTEGER}
+      dt_cadastro: {type: DATE}
+      contrato: {type: TEXT, description: "Identificador do contrato — NAO unico sozinho, ver nota de dedup acima"}
+      tag: {type: TEXT}
+      contratante: {type: TEXT, description: Parte contratante do show}
+      artista: {type: TEXT}
+      uf: {type: TEXT}
+      cidade: {type: TEXT}
+      local: {type: TEXT}
+      tipo_evento: {type: TEXT}
+      dt_show: {type: DATE}
+      status: {type: TEXT}
+      valor: {type: REAL}
+      falta_receber: {type: REAL}
+      vendedor: {type: VARCHAR, description: Responsavel comercial pela venda}
+      obs: {type: TEXT}
+      source_file: {type: TEXT}
+      inserted_at: {type: TIMESTAMPTZ, description: "Usado para dedup — ver nota acima"}
+
+  public.dim_calendario:
+    description: >
+      Dimensao de calendario, 2026-01-01 a 2027-12-31 (730 dias) —
+      forward-looking, cobre o futuro, nao so historico. `dia_critico`
+      (boolean, 238/730 dias) ja vem pre-calculado: sexta e sabado
+      (maioria, ~208 dias — vesperas de dia de descanso) mais uma cauda
+      menor de dias de semana que sao vesperas de feriado/emenda. Nao
+      recalcular essa logica — so consumir a coluna. Shows com
+      `dt_show < 2026-01-01` nao tem correspondente aqui (join retorna
+      null, nao false) — ~22% dos contratos DSU caem nessa lacuna
+      (2026-07-23), entao filtrar `dia_critico is not null` ao calcular
+      percentuais para nao distorcer o resultado.
+    columns:
+      ano_mes: {type: TEXT}
+      data: {type: DATE, description: Chave primaria}
+      dia_semana: {type: TEXT}
+      dia_numero: {type: INTEGER}
+      fim_de_semana: {type: BOOLEAN}
+      feriado: {type: BOOLEAN}
+      nome_feriado: {type: TEXT}
+      uf_feriado: {type: TEXT}
+      dia_critico: {type: BOOLEAN, description: "Sexta/sabado ou vespera de feriado — melhor dia para agendar um show"}
+
+  public.vw_dsu_contratos_calendario:
+    description: >
+      View criada em 2026-07-23 especificamente para dar suporte a
+      `dsu_detail` e ao skill `.claude/skills/dsu-dia-critico/`: dedup de
+      `ft_dsu_controle_contratos` por `contrato` (so a linha com
+      `max(inserted_at)` sobrevive) + LEFT JOIN com `dim_calendario` por
+      `dt_show = data`. 1.338 linhas (2026-07-23, = 1.363 - 25
+      duplicatas). `count(*)` sobre esta view conta contratos reais, sem
+      risco de contagem dupla — ao contrario da tabela base ou de
+      `ft_dsu_dados_analiticos`, nenhuma das duas dedup por contrato.
+    columns:
+      id: {type: INTEGER}
+      contrato: {type: TEXT}
+      dt_cadastro: {type: DATE}
+      tag: {type: TEXT}
+      contratante: {type: TEXT}
+      artista: {type: TEXT}
+      uf: {type: TEXT}
+      cidade: {type: TEXT}
+      local: {type: TEXT}
+      tipo_evento: {type: TEXT}
+      dt_show: {type: DATE}
+      status: {type: TEXT}
+      valor: {type: REAL}
+      falta_receber: {type: REAL}
+      valor_liquido: {type: REAL, description: "valor - falta_receber"}
+      vendedor: {type: VARCHAR}
+      obs: {type: TEXT}
+      source_file: {type: TEXT}
+      inserted_at: {type: TIMESTAMPTZ}
+      dia_semana: {type: TEXT, description: De dim_calendario, null se dt_show < 2026-01-01}
+      fim_de_semana: {type: BOOLEAN}
+      feriado: {type: BOOLEAN}
+      nome_feriado: {type: TEXT}
+      uf_feriado: {type: TEXT}
+      dia_critico: {type: BOOLEAN, description: "Ver public.dim_calendario"}
 
   public.ft_omie_dados_analiticos:
     description: >
@@ -505,8 +608,9 @@ tables:
     - dim_contas
     - dim_omie_categoria
     - dim_omie_grupo
-    - ft_dsu_controle_contratos
-    - ft_dsu_dados_analiticos          # fonte de origem='DSU' na view unificada — ver detail_tables
+    - ft_dsu_controle_contratos         # tabela base — ver detail_tables sobre dedup por contrato
+    - ft_dsu_dados_analiticos          # fonte de origem='DSU' na view unificada — SUPERSEDIDA para dsu_detail, ver detail_tables
+    - vw_dsu_contratos_calendario       # ATUAL — fonte real de dsu_detail desde 2026-07-23, ver detail_tables
     - ft_omie_dados_analiticos         # fonte de origem='Omie' na view unificada — ver detail_tables
     - ft_orchard_dados_analiticos      # fonte de origem='Orchard' na view unificada — ver detail_tables
     - ft_somlivre_sonymusic            # NAO confirmado em origem= — ver detail_tables e TODO.md item 1

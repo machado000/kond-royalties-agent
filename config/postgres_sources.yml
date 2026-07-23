@@ -45,9 +45,19 @@ logical_sources:
   # o schema completo de cada uma. NUNCA combinar mais de uma dessas na
   # mesma consulta, nem com `royalty_performance` (duplicacao de valores).
   dsu_detail:
-    description: Contratos e shows ao vivo (fonte de origem='DSU').
+    description: >
+      Contratos e shows ao vivo (fonte de origem='DSU'). Aponta para
+      `vw_dsu_contratos_calendario` (2026-07-23) em vez de
+      `ft_dsu_dados_analiticos` — a mesma tabela base
+      (`ft_dsu_controle_contratos`), mas com dedup por contrato (alguns
+      contratos tem 2 linhas representando transicao de status; a view ja
+      mantem so a mais recente por `inserted_at`) e enriquecida com
+      `dim_calendario` (dia_semana, feriado, dia_critico — dias ideais
+      para agendar um show: sexta/sabado e vesperas de feriado). Ganha
+      tambem `contratante`, `vendedor`, `tipo_evento`, `tag` (ausentes na
+      view antiga).
     schema: public
-    table: ft_dsu_dados_analiticos
+    table: vw_dsu_contratos_calendario
   omie_detail:
     description: Contas a pagar/receber do ERP Omie (fonte de origem='Omie').
     schema: public

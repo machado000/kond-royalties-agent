@@ -63,7 +63,7 @@ def test_build_query_gravadora_dimension_resolves_subquery() -> None:
     assert "as gravadora" in sql
 
 
-def test_build_query_dsu_artist_falls_back_to_raw_name() -> None:
+def test_build_query_dsu_artist_uses_raw_name() -> None:
     plan = PlannedQuery(
         question="teste",
         source="dsu_detail",
@@ -73,8 +73,21 @@ def test_build_query_dsu_artist_falls_back_to_raw_name() -> None:
 
     sql = build_royalty_query_sql(plan)
 
-    assert "coalesce(" in sql
-    assert "dsu_artista" in sql
+    assert "artista as artist" in sql
+    assert "from public.vw_dsu_contratos_calendario" in sql
+
+
+def test_build_query_dsu_dia_critico_dimension() -> None:
+    plan = PlannedQuery(
+        question="teste",
+        source="dsu_detail",
+        metrics=["shows"],
+        dimensions=["dia_critico"],
+    )
+
+    sql = build_royalty_query_sql(plan)
+
+    assert "dia_critico as dia_critico" in sql
 
 
 def test_build_query_warner_chappell_platform_joins_exploitation_source() -> None:

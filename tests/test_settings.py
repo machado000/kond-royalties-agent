@@ -14,3 +14,4 @@ def test_qualified_table_for_detail_source() -> None:
 
     assert config.qualified_table_for("orchard_detail") == "public.ft_orchard_dados_analiticos"
     assert config.qualified_table_for("warner_chappell_detail") == "warner_chappell.stg_warner_statement"
+    assert config.qualified_table_for("dsu_detail") == "public.vw_dsu_contratos_calendario"

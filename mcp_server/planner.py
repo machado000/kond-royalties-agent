@@ -30,6 +30,10 @@ DIMENSION_KEYWORDS = {
     "territory": ["territorio", "pais", "country"],
     "platform": ["plataforma", "dsp", "canal"],
     "gravadora": ["gravadora", "label", "selo"],
+    "contratante": ["contratante"],
+    "vendedor": ["vendedor", "responsavel comercial"],
+    "tipo_evento": ["tipo de evento", "tipo evento"],
+    "dia_critico": ["dia critico", "dia ideal"],
 }
 
 # Valores gravados na coluna `origem` (ver config/column_dictionary.yml).
