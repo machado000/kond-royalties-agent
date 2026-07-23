@@ -35,16 +35,37 @@ Universal, Warner Chappell, Warner Music).
 
 ### Qualidade de dados — investigar
 
-1. [ ] Confirmar se `ft_somlivre_sonymusic` esta incluida em
-   `vw_ft_dados_analiticos_union` (nao apareceu nos valores distintos de
-   `origem` observados na amostra inicial)
-2. [ ] Mapear o significado de `quantity` por combinacao de
-   `origem`/`revenue_type` (ex.: para `origem='DSU'` +
-   `revenue_type='Shows'`, quantity=1 parece ser contagem de
-   shows/contratos, nao streams — ver `config/column_dictionary.yml`)
-3. [ ] Confirmar com o time se `origem='Omie'` (ERP financeiro) deve
-   continuar misturado na mesma view de "performance de royalties" ou se
-   deveria ser filtrado/separado por padrao
+1. [x] Confirmado (2026-07-22): `ft_somlivre_sonymusic` NAO esta incluida
+   em `vw_ft_dados_analiticos_union`. `pg_get_viewdef` mostra que a view
+   uniona exatamente 6 `vw_debug_*` (DSU, Omie, Orchard, Universal, Warner
+   Chappell, Warner Music) — nao existe `vw_debug_somlivre_sonymusic`. E
+   uma fonte genuinamente separada, so acessivel via `somlivre_detail`.
+2. [x] Mapeado (2026-07-22, ver `config/column_dictionary.yml` para o
+   detalhe completo): DSU/Shows sempre quantity=1 (contagem de
+   shows/contratos, nao streams); Omie sempre NULL em todo revenue_type
+   (nao aplicavel, e financeiro/ERP); Orchard/Universal/Warner
+   Chappell/Warner Music (todos revenue_type='Gravadora' na uniao) tem
+   contagem real de streams/plays, com valores negativos ocasionais
+   esperados (linhas de ajuste/estorno, nao erro de dado).
+3. [ ] Investigado a fundo (2026-07-22) — achado significativo muda o
+   enquadramento da pergunta original: `origem='Omie'` hoje NAO e uma
+   inclusao deliberada/completa, e uma inclusao PARCIAL e ACIDENTAL.
+   `vw_debug_omie_dados_analiticos` exige match de artista bem-sucedido
+   (`da.id IS NOT NULL`, fuzzy contra `dim_artistas.artista_keyword`,
+   quase vazio — ver item 9) para uma linha de Omie entrar na uniao. A
+   contagem de linhas de Omie na view flutuou entre 11 e 2004 durante uma
+   unica sessao de ~5min (evidencia de escrita concorrente em
+   `dim_artistas` fora deste repositorio) — a fatia de Omie que aparece em
+   `royalty_performance` hoje e essencialmente arbitraria (quais projetos
+   Omie por acaso batem com uma das poucas keywords cadastradas), nao o
+   financeiro completo do Omie. Decisao de politica ainda pendente com o
+   time — 3 opcoes reais: (a) manter como esta hoje (inclusao parcial
+   nao-intencional, confusa); (b) excluir origem='Omie' de
+   `royalty_performance` por padrao (usar so `omie_detail` quando a
+   pergunta for explicitamente financeira); (c) corrigir a view
+   `vw_debug_omie_dados_analiticos` do lado do banco para incluir TODAS as
+   linhas de Omie, nao so as com match de artista (fora do escopo deste
+   repositorio, que nao tem ETL proprio).
 
 ### Planner — PT-BR
 

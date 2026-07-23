@@ -77,10 +77,16 @@ canonical_columns:
   # --- Metricas ---
   quantity:
     description: >
-      Quantidade associada a linha (streams, unidades ou contagem,
-      dependendo de origem/revenue_type — ex.: para origem='DSU' e
-      revenue_type='Shows', observado quantity=1 por show/contrato, nao
-      contagem de streams).
+      Semantica mapeada por origem (TODO.md item 2, confirmado 2026-07-22):
+      DSU (revenue_type='Shows') — sempre 1, contagem de shows/contratos,
+      NAO de streams. Omie (todos os revenue_type) — sempre NULL, nao
+      aplicavel (Omie e financeiro/ERP, sem conceito de "quantidade").
+      Orchard/Universal/Warner Chappell/Warner Music (todos com
+      revenue_type='Gravadora' na view unificada) — contagem real de
+      streams/plays, valores tipicamente grandes (ate ~2*10^8 observado em
+      Orchard); valores NEGATIVOS ocasionais em todas as 4 platforms sao
+      esperados — linhas de ajuste/estorno de statements anteriores, nao
+      erro de dado.
     type: NUMERIC
     source: public.vw_ft_dados_analiticos_union.quantity
 
@@ -531,7 +537,7 @@ tables:
     - stg_universal_magmedia
   warner_chappell:
     - dim_exploitation_source
-    - ft_warner_statement   # STALE (congelada em 2025-12) — ver detail_tables, nao usar
+    - ft_warner_statement   # VIEW sobre stg_warner_statement desde 2026-07-22 (nao mais stale) — ver detail_tables
     - stg_warner_statement   # ATUAL — fonte real de warner_chappell_detail desde 2026-07-22, ver detail_tables
     - stg_warner_statement_old   # snapshot congelado, provavel origem de ft_warner_statement — ver detail_tables
 
@@ -544,15 +550,30 @@ data_quality_notes:
        nao apenas distribuidoras de streaming/publishing — 'performance de
        royalties' nesta base e mais amplo, cobrindo qualquer receita
        associada a um artista."
-    - "quantity=1 observado para origem='DSU' + revenue_type='Shows' —
-       provavelmente contagem de shows/contratos, nao streams. O
-       significado de quantity varia por origem/revenue_type e ainda nao
-       foi mapeado exaustivamente."
-    - "ft_somlivre_sonymusic nao apareceu nos valores distintos de origem
-       observados na amostra inicial — confirmar se esta incluida na view
-       ou se e uma fonte separada ainda nao unificada."
-    - "coluna `cost` adicionada desde 2026-07-01: muito esparsa (2.768/10.3M
-       linhas), so observada para origem='Omie'. Ver canonical_columns.cost."
+    - "quantity mapeado por origem (TODO.md item 2, 2026-07-22) — ver
+       canonical_columns.quantity para o detalhe completo."
+    - "CONFIRMADO (2026-07-22, TODO.md item 1): ft_somlivre_sonymusic NAO
+       esta incluida nesta view. `pg_get_viewdef` mostra que a view uniona
+       exatamente 6 `vw_debug_*` (DSU, Omie, Orchard, Universal, Warner
+       Chappell, Warner Music) — nao existe `vw_debug_somlivre_sonymusic`.
+       E uma fonte separada, so acessivel via `somlivre_detail`."
+    - "origem='Omie' e uma inclusao PARCIAL e instavel, nao uma escolha
+       deliberada (TODO.md item 3, investigado 2026-07-22):
+       `vw_debug_omie_dados_analiticos` exige `da.id IS NOT NULL` (match
+       de artista bem-sucedido via fuzzy ILIKE contra
+       dim_artistas.artista_keyword) para uma linha de Omie entrar na
+       uniao. Como artista_keyword esta pouco preenchido (ver TODO.md item
+       9), a contagem de linhas de Omie na view flutuou entre 11 e 2004
+       durante uma unica sessao de investigacao (~5min) — evidencia de
+       escrita concorrente em dim_artistas fora deste repositorio. Ou
+       seja: a fatia de Omie hoje representa so as linhas cujo `projeto`
+       coincide por acaso com uma das poucas keywords cadastradas, nao o
+       financeiro completo do Omie (que soma bem diferente do que aparece
+       aqui) — decisao de manter/filtrar pendente com o time, ver TODO.md."
+    - "coluna `cost` adicionada desde 2026-07-01: muito esparsa, so
+       observada para origem='Omie'. Ver canonical_columns.cost — a
+       contagem exata de linhas com cost preenchido tambem varia junto com
+       a instabilidade de origem='Omie' descrita acima."
     - "NAO agregar com nenhuma detail_table (ver regra critica no topo do
        arquivo) — duplicaria valores ja contabilizados na uniao."
   universal:

@@ -61,7 +61,12 @@ sources:
         label: Origem
         description: >
           Sistema/distribuidora de origem da linha (DSU, Omie, Orchard,
-          Universal, Warner Chappell, Warner Music).
+          Universal, Warner Chappell, Warner Music). Atencao: a fatia
+          origem='Omie' aqui e PARCIAL — so inclui linhas do financeiro
+          Omie cujo projeto casou com um artista cadastrado (cobertura
+          baixa e instavel); nao representa o financeiro Omie completo.
+          Para uma visao financeira completa do Omie, usar a fonte
+          `omie_detail`.
       revenue_type:
         label: Tipo de receita
         description: Categoria da receita (Editora, Gravadora, Publicidade, Shows, N/D).
