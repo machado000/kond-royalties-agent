@@ -203,8 +203,10 @@ sources:
   somlivre_detail:
     description: >
       Reproducoes digitais Som Livre/Sony Music. Tem faixa — ausente na
-      view unificada. Cobertura na view unificada nao confirmada (ver
-      TODO.md item 1).
+      view unificada. Confirmado (TODO.md item 1): esta fonte NAO esta
+      incluida em `royalty_performance` — nao ha risco de duplicacao ao
+      usa-la isoladamente, mas tambem nao ha como cruzar com origem='...'
+      na view unificada (Som Livre simplesmente nao aparece la).
     metrics:
       revenue:
         label: Royalty liquido

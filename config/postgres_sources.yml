@@ -70,8 +70,8 @@ logical_sources:
     table: ft_orchard_dados_analiticos
   somlivre_detail:
     description: >
-      Statement Som Livre/Sony Music — NAO confirmado se esta incluido em
-      `origem=` na view unificada (ver TODO.md item 1).
+      Statement Som Livre/Sony Music — confirmado fora da view unificada
+      (TODO.md item 1), fonte separada com dados de faixa.
     schema: public
     table: ft_somlivre_sonymusic
   universal_detail:

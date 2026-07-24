@@ -136,13 +136,22 @@ detail_tables:
 
   public.ft_dsu_dados_analiticos:
     description: >
-      Contratos e shows ao vivo (fonte de origem='DSU' na view unificada).
-      SUPERSEDIDA para uso do agente (2026-07-23): `dsu_detail` agora
-      aponta para `public.vw_dsu_contratos_calendario` (ver abaixo), que
-      cobre as mesmas colunas mais dedup por contrato e enriquecimento com
-      `dim_calendario`. Esta view continua existindo e alimentando
-      `vw_ft_dados_analiticos_union` (origem='DSU'), so nao e mais a fonte
-      direta de `dsu_detail`.
+      SUPERSEDIDA para uso do agente (2026-07-23): `dsu_detail` aponta
+      para `public.vw_dsu_contratos_calendario` (ver abaixo). CORRECAO
+      (2026-07-23): a descricao anterior dizia que esta view "continua
+      alimentando vw_ft_dados_analiticos_union" — isso estava ERRADO.
+      `pg_get_viewdef` confirma que `vw_debug_dsu_dados_analiticos` (a
+      etapa que realmente alimenta a uniao) sempre leu direto de
+      `ft_dsu_controle_contratos`, nunca desta view — o nome
+      `ft_dsu_dados_analiticos` so aparece la como um literal de texto
+      cosmetico (`origin_table`). Ou seja, esta view ja estava orfa antes
+      mesmo da migracao do `dsu_detail`. Redefinida no mesmo dia (DDL
+      fora deste repo) para ler de `vw_dsu_contratos_calendario` em vez
+      de `ft_dsu_controle_contratos` diretamente — mesmas 14 colunas/
+      mesma ordem (mantido por compatibilidade com qualquer consumidor
+      externo que ainda a referencie pelo nome), mas agora deduplicada
+      (1.338 linhas, era 1.363). Nao ha mais motivo pratico para usar
+      esta view em vez de `vw_dsu_contratos_calendario` diretamente.
     columns:
       id: {type: INTEGER}
       dt_cadastro: {type: DATE, description: Data de cadastro do contrato}
@@ -226,8 +235,10 @@ detail_tables:
       `max(inserted_at)` sobrevive) + LEFT JOIN com `dim_calendario` por
       `dt_show = data`. 1.338 linhas (2026-07-23, = 1.363 - 25
       duplicatas). `count(*)` sobre esta view conta contratos reais, sem
-      risco de contagem dupla — ao contrario da tabela base ou de
-      `ft_dsu_dados_analiticos`, nenhuma das duas dedup por contrato.
+      risco de contagem dupla — ao contrario da tabela base
+      (`ft_dsu_controle_contratos`), que nao dedup por contrato.
+      `ft_dsu_dados_analiticos` foi redefinida em 2026-07-23 para ler
+      desta view, entao tambem ja vem deduplicada.
     columns:
       id: {type: INTEGER}
       contrato: {type: TEXT}
@@ -255,11 +266,55 @@ detail_tables:
       uf_feriado: {type: TEXT}
       dia_critico: {type: BOOLEAN, description: "Ver public.dim_calendario"}
 
+  public.dim_omie_categoria:
+    description: >
+      Referencia/taxonomia de categorias contabeis do Omie (2026-07-23).
+      223 linhas, colunas `id, tipo, grupo, categoria, ativo,
+      inserted_at`, unique em (tipo, grupo, categoria). NAO e joinada em
+      lugar nenhum — nem `ft_omie_dados_analiticos` nem
+      `stg_omie_consolidado` tem uma coluna de FK apontando pra ela (ambas
+      carregam tipo/grupo/categoria como texto solto). Tambem esta
+      desatualizada como lista de referencia: 19 das 189 combinacoes
+      (tipo, grupo, categoria) distintas realmente usadas em
+      `ft_omie_dados_analiticos` NAO aparecem aqui (~10% de deriva, ex.:
+      "Fotografo", "Iluminação", "Produção musical" faltando). Nao tratar
+      como lista autoritativa nem tentar joinar — nao ha caminho de uso
+      pelo agente hoje.
+
+  public.dim_omie_grupo:
+    description: >
+      Filtro ativo/inativo de grupos contabeis do Omie — DIFERENTE de
+      `dim_omie_categoria` (que e so referencia passiva), esta tabela e
+      load-bearing: `ft_omie_dados_analiticos` faz
+      `LEFT JOIN dim_omie_grupo og ON oc.grupo = og.grupo
+      WHERE og.ativo IS TRUE`, entao qualquer linha Omie cujo `grupo` nao
+      esteja marcado ativo aqui e excluida silenciosamente da view (ver
+      `public.ft_omie_dados_analiticos` abaixo). 25 linhas, 15 ativas
+      (2026-07-23). ATENCAO — bug latente na view (fora deste repo, nao
+      corrigido): o JOIN usa so `grupo`, ignorando `tipo`; ha um valor de
+      `grupo` duplicado ("Transferência", uma vez em cada `tipo`), hoje
+      dormant porque ambas as linhas tem `ativo=false`, mas se qualquer
+      uma for reativada sem a outra o JOIN pode multiplicar linhas Omie
+      com esse grupo.
+    columns:
+      id: {type: INTEGER}
+      tipo: {type: TEXT}
+      grupo: {type: TEXT}
+      ativo: {type: BOOLEAN}
+      inserted_at: {type: TIMESTAMPTZ}
+
   public.ft_omie_dados_analiticos:
     description: >
       Contas a pagar/receber do ERP Omie (fonte de origem='Omie' na view
       unificada). 30 colunas — financeiro geral, nao especifico de
-      royalties/streaming.
+      royalties/streaming. 9.123 linhas (2026-07-23, cresce continuamente
+      — e um feed financeiro vivo). ATENCAO: filtrada por
+      `dim_omie_grupo` — qualquer linha cujo `grupo` nao esteja marcado
+      `ativo=true` em `dim_omie_grupo` e excluida silenciosamente desta
+      view (ver `public.dim_omie_grupo` abaixo). Isso significa que
+      transacoes Omie podem "desaparecer" desta fonte sem erro algum se o
+      grupo delas for desativado — nao e um bug da query, e o
+      comportamento do JOIN na view base.
     columns:
       id: {type: INTEGER}
       minha_empresa_cnpj: {type: VARCHAR}
@@ -322,16 +377,23 @@ detail_tables:
       Matching ja resolvido dentro da propria view (nao precisa de JOIN
       adicional no agente): `artista_produto` casado via ILIKE contra
       `dim_artistas.artista_keyword`. Titulos de faixa (`titulo_musica`)
-      corrompidos (ex.: `????????????????????`) em ~0,57% das linhas
-      (53.672 de 9.362.461 em 2026-07-21) — problema de encoding na origem
-      (arquivos de statement da Orchard), nao no agente nem na query. Ver
-      TODO.md item 9b.
+      corrompidos (ex.: `????????????????????`) em ~0,59% das linhas
+      (54.213 de 9.235.482 em 2026-07-23, era 53.672/9.362.461 em
+      2026-07-21 — total de linhas caiu, provavel refresh/correcao a
+      montante em `mv_ft_orchard_revenue`, taxa de corrupcao estavel) —
+      problema de encoding na origem (arquivos de statement da Orchard),
+      nao no agente nem na query. Ver TODO.md item 9b.
 
   public.ft_somlivre_sonymusic:
     description: >
-      Statement Som Livre/Sony Music. NAO confirmado se esta incluido em
-      `origem=` na view unificada (ver TODO.md item 1) — tratar como fonte
-      possivelmente separada ate confirmar.
+      Statement Som Livre/Sony Music. CONFIRMADO (2026-07-22, TODO.md
+      item 1): NAO esta incluida em `vw_ft_dados_analiticos_union` —
+      `pg_get_viewdef` da uniao mostra exatamente 6 `vw_debug_*` (DSU,
+      Omie, Orchard, Universal, Warner Chappell, Warner Music), sem
+      `vw_debug_somlivre_sonymusic`. E uma fonte genuinamente separada,
+      so acessivel via `somlivre_detail`. View simples sobre
+      `stg_somlivre_sonymusic`, sem filtro/dedup. 85.919 linhas
+      (re-verificado 2026-07-23, sem drift).
     columns:
       rec_number: {type: INTEGER}
       servico: {type: TEXT}
@@ -350,7 +412,8 @@ detail_tables:
   public.ft_universal_dados_analiticos:
     description: >
       Statement Universal Music (fonte de origem='Universal' na view
-      unificada). Tem detalhe de faixa e compositor.
+      unificada). Tem detalhe de faixa e compositor. 352.189 linhas
+      (2026-07-23/24, sem drift vs amostra anterior).
     columns:
       razao_social: {type: TEXT}
       apelido: {type: TEXT}
@@ -376,7 +439,12 @@ detail_tables:
       `universal.dim_compositor` e apenas a tabela de normalizacao de
       `dim_musica.compositor` (enforce de unicidade) — nao adiciona nada
       alem do que ja vem via `dim_musica`, entao nao ha necessidade de
-      join-la separadamente (TODO.md item 8).
+      join-la separadamente (TODO.md item 8). Taxa de match real
+      (2026-07-23/24): 102.598 de 352.189 linhas (~29%) tem
+      `matched_artista_id` preenchido — mesmo com so 4 valores distintos
+      de `universal_compositor` cadastrados em `dim_artistas`, esses
+      poucos compositores respondem por uma fatia relevante das linhas
+      (compositores prolificos).
 
   public.ft_warner_chappell_dados_analiticos:
     description: >
@@ -384,8 +452,17 @@ detail_tables:
       origem='Warner Chappell' na view unificada) — desde 2026-07-22 join
       direto com `warner_chappell.stg_warner_statement` (antes usava a
       base `ft_warner_statement`, sem impacto pratico ja que ambas agora
-      leem da mesma fonte). Preferir `warner_chappell.stg_warner_statement`
-      (11 vs 34 colunas) para analises detalhadas — ver essa tabela abaixo.
+      leem da mesma fonte). NUNCA foi usada como `logical_source` pelo
+      agente e nao precisa ser: `stg_warner_statement` (fonte real de
+      `warner_chappell_detail`) tem todas as 11 colunas daqui (sem o
+      truncamento de 50 chars em `creator_names`) mais outras 23, e o
+      enriquecimento `descricao_canal` (via `dim_exploitation_source`) ja
+      e replicado independentemente na dimensao `platform` de
+      `warner_chappell_detail` (`semantic_catalog/catalog.yml`).
+      Documentada aqui so por completude/para quem ainda a consulte
+      externamente. 130.473 linhas (2026-07-23/24, sem drift). Preferir
+      `warner_chappell.stg_warner_statement` (11 vs 34 colunas) para
+      analises detalhadas — ver essa tabela abaixo.
     columns:
       id: {type: INTEGER}
       data_extrato: {type: TEXT}
@@ -402,7 +479,10 @@ detail_tables:
   public.ft_warner_music_dados_analiticos:
     description: >
       Statement Warner Music (fonte de origem='Warner Music' na view
-      unificada). Tem detalhe de faixa, DSP e territorio.
+      unificada). Tem detalhe de faixa, DSP e territorio. 540.353 linhas
+      (2026-07-23/24, sem drift). View simples sobre
+      `stg_warner_music_details`, que tem unique constraint em
+      (source_file, line_number) — sem risco de duplicata.
     columns:
       id: {type: INTEGER}
       account: {type: TEXT}
@@ -424,6 +504,28 @@ detail_tables:
       payee: {type: TEXT}
       source_file: {type: TEXT}
       line_number: {type: INTEGER}
+
+  warner_chappell.dim_exploitation_source:
+    description: >
+      Referencia de canal/plataforma para Warner Chappell — chave
+      (income_provider_name, exploitation_source), unique constraint
+      confirmada. Load-bearing: usada pela dimensao `platform` de
+      `warner_chappell_detail` (`semantic_catalog/catalog.yml`) via join
+      contra `stg_warner_statement`. Cobertura real (2026-07-24): 489
+      linhas de referencia; a nivel de combinacao distinta
+      (income_provider_name, exploitation_source) so ~40% das 1.190
+      combinacoes realmente usadas em `stg_warner_statement` tem match
+      aqui, MAS a nivel de linha a cobertura e boa — 120.526 de 130.473
+      linhas (~92,4%) resolvem `descricao_canal`. As combinacoes sem
+      match sao cauda longa (provedores/fontes raros, poucas linhas
+      cada); `platform` fica null so para essa minoria.
+    columns:
+      source_id: {type: BIGINT}
+      income_provider_name: {type: TEXT}
+      exploitation_source: {type: TEXT}
+      codigo_canal: {type: TEXT}
+      descricao_canal: {type: TEXT}
+      updated_at: {type: TIMESTAMPTZ}
 
   warner_chappell.ft_warner_statement:
     description: >
@@ -564,10 +666,10 @@ detail_tables:
       artista_keyword: {type: TEXT}
       dsu_artista: {type: TEXT, description: "Nome usado no DSU (ver ft_dsu_dados_analiticos.artista)"}
       omie_projeto: {type: TEXT, description: "Projeto Omie (ver ft_omie_dados_analiticos.projeto)"}
-      cod_onerpm: {type: TEXT}
+      cod_onerpm: {type: TEXT, description: "NAO REFERENCIADO em nenhum lugar do codigo/config (0/660 preenchido, 2026-07-23). Nenhuma plataforma 'OneRPM' aparece em `origem` — proposito nao identificado, tratar como nao usado ate confirmar."}
       orchard_product_artist: {type: ARRAY}
       cod_sony: {type: TEXT}
-      universal_compositor: {type: TEXT}
+      universal_compositor: {type: TEXT, description: "Chave de match exato para Universal (ver enrichment de ft_universal_dados_analiticos) — esparsa: 4/660 preenchido (2026-07-23), mesma classe de problema documentada no achado de investigacao abaixo."}
       warner_chappel_deal_scope_name: {type: ARRAY}
       warner_music_artist_name: {type: TEXT}
 
@@ -602,18 +704,18 @@ tables:
   public:
     - vw_ft_dados_analiticos_union   # view unificada (query_source atual)
     - dim_artistas                     # artista: nome civil/artistico, gravadora, IDs por plataforma/distribuidor
-    - dim_calendario                   # calendario diario (nao usado hoje — a view e mensal)
+    - dim_calendario                   # calendario diario — usado via vw_dsu_contratos_calendario (dia_critico, feriado etc.), ver detail_tables
     - dim_canal                        # canal (nao referenciado diretamente pela view unificada)
     - dim_pais                         # pais (nao referenciado diretamente pela view unificada)
     - dim_contas
     - dim_omie_categoria
     - dim_omie_grupo
     - ft_dsu_controle_contratos         # tabela base — ver detail_tables sobre dedup por contrato
-    - ft_dsu_dados_analiticos          # fonte de origem='DSU' na view unificada — SUPERSEDIDA para dsu_detail, ver detail_tables
+    - ft_dsu_dados_analiticos          # SUPERSEDIDA para dsu_detail (usa vw_dsu_contratos_calendario) — NAO alimenta a uniao (essa le ft_dsu_controle_contratos direto), ver detail_tables
     - vw_dsu_contratos_calendario       # ATUAL — fonte real de dsu_detail desde 2026-07-23, ver detail_tables
     - ft_omie_dados_analiticos         # fonte de origem='Omie' na view unificada — ver detail_tables
     - ft_orchard_dados_analiticos      # fonte de origem='Orchard' na view unificada — ver detail_tables
-    - ft_somlivre_sonymusic            # NAO confirmado em origem= — ver detail_tables e TODO.md item 1
+    - ft_somlivre_sonymusic            # CONFIRMADO fora da view unificada — fonte separada, so via somlivre_detail, ver detail_tables
     - ft_universal_dados_analiticos    # fonte de origem='Universal' na view unificada — ver detail_tables
     - ft_warner_chappell_dados_analiticos  # fonte de origem='Warner Chappell' — ver detail_tables (preferir warner_chappell.stg_warner_statement)
     - ft_warner_music_dados_analiticos # fonte de origem='Warner Music' na view unificada — ver detail_tables
@@ -640,14 +742,30 @@ tables:
     - dim_tipo_renda     # referencia de tipos de renda — nao referenciada pela view atual
     - stg_universal_magmedia
   warner_chappell:
-    - dim_exploitation_source
+    - dim_exploitation_source   # load-bearing para warner_chappell_detail.platform, ver detail_tables
     - ft_warner_statement   # VIEW sobre stg_warner_statement desde 2026-07-22 (nao mais stale) — ver detail_tables
     - stg_warner_statement   # ATUAL — fonte real de warner_chappell_detail desde 2026-07-22, ver detail_tables
     - stg_warner_statement_old   # snapshot congelado, provavel origem de ft_warner_statement — ver detail_tables
 
 data_quality_notes:
   public.vw_ft_dados_analiticos_union:
-    - "10.3M linhas em 2026-07-01 (select count(*)); nao recontado em 2026-07-21."
+    - "10.264.535 linhas (2026-07-24, re-contado — era 10.3M em 2026-07-01)."
+    - "CORRIGIDO (2026-07-24): `vw_debug_dsu_dados_analiticos` (a fonte de
+       origem='DSU' nesta uniao) tinha DOIS problemas de contagem —
+       (1) lia `ft_dsu_controle_contratos` direto, sem deduplicar os 25
+       contratos com 2 linhas de status (mesmo bug ja corrigido em
+       `ft_dsu_dados_analiticos`), overcounting a receita DSU em ~R$606mil;
+       (2) NAO filtrava por `status`, entao contratos
+       `FINANCEIRO/AGUARDAR` (nao confirmados, R$16,49M) e
+       `CANCELADO/REMARCAR` (shows que nao aconteceram, R$1,29M) estavam
+       somados junto com `CONFIRMADO` — quase metade (R$17,78M de
+       R$37,46M) da receita DSU na uniao vinha de shows nao-realizados.
+       Redefinida (DDL fora deste repo) para ler de
+       `vw_dsu_contratos_calendario` (deduplicada) com `WHERE status =
+       'CONFIRMADO'` — mesmo criterio ja usado pelo skill/tools
+       `dsu-dia-critico`/`dsu_booking_quality`/`dsu_missed_opportunities`.
+       DSU agora: 876 linhas (era 1.363), receita R$19.669.462,75 (era
+       R$37.463.148,26)."
     - "period/revenue_period sao TEXT em grao mensal ('AAAA-MM'), identicos em
        todas as amostras observadas — nao ha granularidade diaria nesta view."
     - "origem inclui 'Omie' (ERP financeiro geral) e 'DSU' (shows ao vivo),
@@ -662,18 +780,21 @@ data_quality_notes:
        Chappell, Warner Music) — nao existe `vw_debug_somlivre_sonymusic`.
        E uma fonte separada, so acessivel via `somlivre_detail`."
     - "origem='Omie' e uma inclusao PARCIAL e instavel, nao uma escolha
-       deliberada (TODO.md item 3, investigado 2026-07-22):
-       `vw_debug_omie_dados_analiticos` exige `da.id IS NOT NULL` (match
-       de artista bem-sucedido via fuzzy ILIKE contra
-       dim_artistas.artista_keyword) para uma linha de Omie entrar na
-       uniao. Como artista_keyword esta pouco preenchido (ver TODO.md item
-       9), a contagem de linhas de Omie na view flutuou entre 11 e 2004
-       durante uma unica sessao de investigacao (~5min) — evidencia de
-       escrita concorrente em dim_artistas fora deste repositorio. Ou
-       seja: a fatia de Omie hoje representa so as linhas cujo `projeto`
-       coincide por acaso com uma das poucas keywords cadastradas, nao o
-       financeiro completo do Omie (que soma bem diferente do que aparece
-       aqui) — decisao de manter/filtrar pendente com o time, ver TODO.md."
+       deliberada (TODO.md item 3, investigado 2026-07-22, reconfirmado
+       2026-07-24): `vw_debug_omie_dados_analiticos` exige
+       `da.id IS NOT NULL` (match de artista bem-sucedido via fuzzy ILIKE
+       contra dim_artistas.artista_keyword) para uma linha de Omie entrar
+       na uniao. Como artista_keyword esta pouco preenchido (ver TODO.md
+       item 9), a contagem de linhas de Omie na view continua mudando
+       entre sessoes distintas, nao so dentro de uma unica sessao: 11 ->
+       1944 -> 2001 -> 2004 (2026-07-22, ~5min) -> 5162 (2026-07-24) —
+       mais que dobrou de uma sessao pra outra, confirmando escrita
+       concorrente continua em dim_artistas fora deste repositorio (nao
+       so um pico isolado). A fatia de Omie hoje representa so as linhas
+       cujo `projeto` coincide por acaso com uma das poucas keywords
+       cadastradas, nao o financeiro completo do Omie (que soma bem
+       diferente do que aparece aqui) — decisao de manter/filtrar
+       pendente com o time, ver TODO.md."
     - "coluna `cost` adicionada desde 2026-07-01: muito esparsa, so
        observada para origem='Omie'. Ver canonical_columns.cost — a
        contagem exata de linhas com cost preenchido tambem varia junto com
