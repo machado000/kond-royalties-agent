@@ -65,13 +65,78 @@ Ambos corrigidos em `mcp_server/oauth.py` usando descoberta OIDC padrao
 quanto o `issuer` de referencia — o codigo hoje e generico o suficiente
 para qualquer IdP compativel, nao apenas Auth0.
 
+## Skill/tools de qualidade de agendamento DSU (2026-07-23)
+
+Skill `.claude/skills/dsu-dia-critico/` responde duas perguntas de negocio
+sobre booking de shows ao vivo (DSU): % de shows CONFIRMADO em
+`dia_critico` (sexta/sabado/vespera de feriado) por artista, e datas
+futuras de `dia_critico` ainda sem contrato CONFIRMADO (oportunidade de
+venda). Suporte de dados: view nova `public.vw_dsu_contratos_calendario`
+(dedup de `ft_dsu_controle_contratos` por `contrato` — 25 contratos tinham
+2 linhas de transicao de status — + LEFT JOIN com `dim_calendario`).
+Implementado tambem como tools MCP reais (`dsu_booking_quality`,
+`dsu_missed_opportunities`, `mcp_server/dsu_analytics.py`), expostas via
+stdio/HTTP/CLI mantendo a paridade 1:1 (ver TODO.md item 14). `dsu_detail`
+no catalogo semantico migrou para essa mesma view (antes apontava para
+`ft_dsu_dados_analiticos`), ganhando `contratante`/`vendedor`/
+`tipo_evento`/`tag`/`dia_critico` como dimensoes novas.
+
+## Separacao Royalties x Financeiro (2026-07-24)
+
+Omie e um ERP financeiro (contas a pagar/receber, passado e futuro) — nao
+uma plataforma de audit de royalties como DSU/Orchard/Universal/Warner
+Chappell/Warner Music. Investigacao anterior (TODO.md item 3) ja tinha
+identificado que a presenca de `origem='Omie'` em
+`vw_ft_dados_analiticos_union` era uma inclusao PARCIAL e ACIDENTAL (exigia
+match fuzzy de artista contra um cadastro quase vazio, contagem de linhas
+instavel entre sessoes). O usuario removeu Omie da view diretamente no
+banco; em resposta, o catalogo semantico e o planner foram reestruturados
+para tornar a separacao estrutural, nao so documental:
+
+- **Vocabulario de metrica deliberadamente sem sobreposicao**: fontes de
+  royalty (`royalty_performance` + todas as `*_detail` de plataforma de
+  audit) usam a chave/rotulo `royalties`; `omie_detail` usa
+  `revenue`/`cost`/`resultado` (Receita/Custo/Resultado). Nenhuma fonte
+  expoe as duas — `query_builder.py` rejeita a combinacao via validacao
+  contra o catalogo (`ValueError: Metricas nao aprovadas`), entao a
+  separacao e imposta em tempo de execucao, nao so por convencao.
+- **Roteamento de pergunta (planner.py) tambem separado**: palavras como
+  "royalties"/"direitos autorais"/"remuneração autoral" mapeiam para a
+  metrica `royalties`; "receita"/"custo"/"lucro"/"resultado"/"omie" mapeiam
+  para `omie_detail` via `SOURCE_STANDALONE_KEYWORDS` (antes, "Omie" so
+  existia como um valor de filtro em `origem` — removido, ja que Omie nao
+  e mais um valor valido dessa dimensao).
+- **Renomeacao de colunas (fora deste repo, direto no banco)**: a view
+  unificada e as 6 `vw_debug_*` por tras dela tiveram colunas renomeadas
+  para PT-BR no mesmo dia (`period`->`periodo`, `artist`->`artista`,
+  `origem`->`plataforma_origem`, `revenue_type`->`tipo_remuneracao`,
+  `quantity`->`quantidade`, e — numa segunda rodada, no meio da mesma
+  sessao — `revenue`->`valor_liquido`->`valor_royalties`). Cada rename
+  quebrou `catalog.yml` (colunas resolvidas via `expression_hint`
+  apontando para nomes que deixaram de existir) ate ser recorrigido —
+  ver nota operacional em `next-session.md` sobre reconferir schema real
+  quando outro processo tem acesso direto de DDL.
+- **Verificacao ao vivo**: ambos os dominios testados contra a URL de
+  producao real pos-deploy — pergunta de royalty (`sum(valor_royalties)`
+  via `royalty_performance`) e pergunta financeira ("receita e custo do
+  ultimo mes", roteada para `omie_detail` com split `revenue`/`cost` por
+  sinal de `valor_liquido`).
+
+Consequencia pratica: uma pergunta ambigua tipo "qual a receita?" agora
+resolve para o dominio financeiro (Omie) por padrao, nao para royalties —
+mudanca deliberada, ja que "receita" no vocabulario de negocio deste
+projeto passou a significar especificamente o financeiro/ERP.
+
 ## Limites conhecidos
 
 - a geracao de resposta da OpenAI ainda usa `requests` direto na API `POST /v1/responses`
-- ainda nao existe output schema estrito com `json_schema`
+- output schema estrito com `json_schema` ja implementado (2026-07-22, ver
+  `mcp_server/responder.py` — Structured Outputs, `strict: true`)
 - ainda nao existe geracao de PDF
 - ainda nao existem tools MCP para relatorio (`generate_royalty_report` pendente)
 - ainda nao existe camada de artefatos visuais alem da sugestao estruturada
+- ainda nao existe uma fonte de comparacao explicita Royalties x Financeiro
+  lado a lado (discutida 2026-07-24, nao implementada — ver TODO.md)
 
 ## Decisao importante
 

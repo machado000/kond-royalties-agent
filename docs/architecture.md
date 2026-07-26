@@ -39,10 +39,19 @@ Docker/Caddy/OAuth no caminho.
 
 ### Catalogo semantico
 
-- metricas oficiais (streams, unidades, receita, royalties)
-- dimensoes aceitas (data, artista, faixa, album, plataforma/DSP, territorio)
-- fonte aprovada (tabela/view de analise em `marts`)
-- regras de negocio
+- metricas oficiais, com dois dominios deliberadamente separados (nunca
+  combinados numa mesma fonte): royalties (`royalties`, `quantity`) para
+  as plataformas de audit (DSU/Orchard/Universal/Warner Chappell/Warner
+  Music) e financeiro (`revenue`/`cost`/`resultado`) para o ERP Omie
+  (`omie_detail`) — ver README.md para a tabela completa de metricas,
+  colunas reais e sinonimos de roteamento
+- dimensoes aceitas (periodo, artista, faixa, compositor, plataforma/DSP,
+  territorio, origem, tipo de royalty, gravadora)
+- fonte aprovada por consulta (`royalty_performance` como padrao
+  cross-plataforma, mais uma `*_detail` por plataforma/dominio — ver
+  `semantic_catalog/catalog.yml`)
+- regras de negocio (nunca agregar entre granularidades diferentes, nunca
+  combinar royalties com receita/custo do Omie)
 
 ### Relatorios
 
@@ -59,14 +68,19 @@ Docker/Caddy/OAuth no caminho.
 
 ## Nota sobre o schema real
 
-O schema de royalties foi validado em 2026-07-01 contra o banco de producao
-(`describe-schema` + consultas de amostragem). O agente consulta
-`public.vw_ft_dados_analiticos_union`, uma view que unifica as fact tables
-de todas as origens/distribuidoras (DSU, Omie, Orchard, Universal, Warner
-Chappell, Warner Music) no grao artista + periodo (mes) + origem + tipo de
-receita. Ver `config/postgres_sources.yml` e `config/column_dictionary.yml`
-para o detalhe completo, incluindo notas de qualidade de dados (ex.: grao
-mensal, nao diario). Pendencias de investigacao em [TODO.md](../TODO.md).
+O schema de royalties foi revalidado em 2026-07-24 contra o banco de
+producao. O agente consulta `public.vw_ft_dados_analiticos_union`, uma view
+que unifica as fact tables das plataformas de audit de royalty (DSU,
+Orchard, Universal, Warner Chappell, Warner Music) no grao artista +
+periodo (mes) + origem + tipo de royalty. Omie (ERP financeiro) NAO faz
+mais parte desta view (removido 2026-07-24 — era uma inclusao parcial e
+acidental, ver `TODO.md`) e vive exclusivamente na fonte `omie_detail`,
+com metricas/vocabulario proprios (Receita/Custo/Resultado) — ver
+README.md para a referencia completa de vocabulario (metricas, colunas
+reais, sinonimos de roteamento por pergunta em PT-BR). Ver
+`config/postgres_sources.yml` e `config/column_dictionary.yml` para o
+detalhe completo, incluindo notas de qualidade de dados (ex.: grao mensal,
+nao diario). Pendencias de investigacao em [TODO.md](../TODO.md).
 
 ## Autenticacao e deploy remoto
 

@@ -21,16 +21,27 @@
 
 ### Dados
 
-- schema real validado contra producao: `public.vw_ft_dados_analiticos_union`
-  (10.3M linhas), unificando DSU/Omie/Orchard/Universal/Warner
-  Chappell/Warner Music por artista + periodo (mes) + origem + tipo de
-  receita — ver `config/column_dictionary.yml` para notas de qualidade
+- schema real revalidado contra producao em 2026-07-24 (14 tabelas/views
+  revisadas tabela a tabela): `public.vw_ft_dados_analiticos_union`
+  unifica DSU/Orchard/Universal/Warner Chappell/Warner Music por artista +
+  periodo (mes) + origem + tipo de royalty
+- **separacao royalties x financeiro (2026-07-24)**: Omie (ERP financeiro)
+  removido da view unificada — era inclusao parcial/acidental (ver
+  `TODO.md`, secao Resolvido). Vocabulario/metricas agora deliberadamente
+  distintos por dominio (`royalties` vs `revenue`/`cost`/`resultado`),
+  nunca coexistem na mesma fonte do catalogo — ver README.md para a
+  tabela completa de metricas/colunas/sinonimos
 - `catalog`, `config`, `diagnose-postgres`, `describe-schema`, `plan-query`,
-  `run-query`, `ask`, `serve-mcp`, `serve-http` — todos os comandos CLI
-  implementados e validados
+  `run-query`, `ask`, `serve-mcp`, `serve-http`, `dsu-booking-quality`,
+  `dsu-missed-opportunities` — todos os comandos CLI implementados e
+  validados, com paridade 1:1 nas tools MCP
 - fluxo semantico completo: pergunta natural -> plano -> SQL controlado
-  contra `public.vw_ft_dados_analiticos_union` -> Postgres -> sintese
-  executiva em PT-BR via OpenAI (com fallback deterministico)
+  contra a fonte resolvida (`royalty_performance` ou uma `*_detail`) ->
+  Postgres -> sintese executiva em PT-BR via OpenAI (com fallback
+  deterministico)
+- skill `dsu-dia-critico` (qualidade de agendamento de shows DSU em
+  `dia_critico`) com tools MCP dedicadas (`dsu_booking_quality`,
+  `dsu_missed_opportunities`), validadas em producao
 
 ### Deploy remoto e autenticacao
 
@@ -46,13 +57,23 @@
 - `mistral-analytics-mcp` (servico legado, projeto separado) recebeu o
   mesmo padrao de rota Caddy, sem impacto no seu funcionamento
 
+### Ferramental local (dev/exploracao)
+
+- MCP local read-only Postgres (`kond-postgres-readonly`, escopo `local`
+  em `~/.claude.json`, fora do repositorio) para SELECT/WITH/EXPLAIN
+  ad-hoc sem precisar shellar `psql` — bloqueia writes/DDL no proprio
+  servidor. Processos de longa duracao (stdio) nao recarregam codigo
+  Python editado na sessao — reiniciar apos mudancas em `mcp_server/*.py`
+  antes de usar como smoke test de logica (config/YAML e sempre lido
+  fresco, isso nao se aplica a eles)
+
 ### Testes
 
-- `pytest` completo: `14 passed`
+- `pytest` completo: `47 passed`
 
 ## Pendente
 
-Ver `TODO.md` na raiz — qualidade de dados (significado de `quantity` por
-origem/tipo de receita, cobertura de `ft_somlivre_sonymusic`), relatorio
-PDF, enriquecimento via schemas de detalhe (`universal`, `warner_chappell`,
-`dim_artistas`).
+Ver `TODO.md` na raiz, secao Pendente — relatorio PDF (nao iniciado),
+rotina de rotacao dos client secrets Auth0, exposicao opcional de
+`ft_dsu_controle_contratos` (raw) como fonte de auditoria, e itens de
+limpeza de documentacao menores.

@@ -9,28 +9,28 @@ from mcp_server.query_builder import build_royalty_query_sql
 
 def test_build_query_uses_approved_dimensions_and_metrics() -> None:
     request = RoyaltyQueryRequest(
-        question="Como foram quantidade e receita por artista nos ultimos 7 dias?"
+        question="Como foram quantidade e royalties por artista nos ultimos 7 dias?"
     )
     plan = plan_royalty_query(request, today=date(2026, 6, 26))
 
     sql = build_royalty_query_sql(plan)
 
     assert plan.source == "royalty_performance"
-    assert "sum(quantity) as quantity" in sql
-    assert "sum(revenue) as revenue" in sql
+    assert "sum(quantidade) as quantity" in sql
+    assert "sum(valor_royalties) as royalties" in sql
     assert "from public.vw_ft_dados_analiticos_union" in sql
     assert "group by 1" in sql
-    assert "period >= '2026-06'" in sql
-    assert "period <= '2026-06'" in sql
+    assert "periodo >= '2026-06'" in sql
+    assert "periodo <= '2026-06'" in sql
 
 
 def test_build_query_applies_case_insensitive_filter() -> None:
-    request = RoyaltyQueryRequest(question="Mostre receita da Orchard por tipo de receita")
+    request = RoyaltyQueryRequest(question="Mostre royalties da Orchard por tipo de royalty")
     plan = plan_royalty_query(request, today=date(2026, 6, 26))
 
     sql = build_royalty_query_sql(plan)
 
-    assert "lower(origem) = lower('Orchard')" in sql
+    assert "lower(plataforma_origem) = lower('Orchard')" in sql
 
 
 def test_build_query_for_detail_source_resolves_expression_hints() -> None:
@@ -52,7 +52,7 @@ def test_build_query_gravadora_dimension_resolves_subquery() -> None:
     plan = PlannedQuery(
         question="teste",
         source="royalty_performance",
-        metrics=["revenue"],
+        metrics=["royalties"],
         dimensions=["gravadora"],
     )
 
@@ -67,7 +67,7 @@ def test_build_query_dsu_artist_uses_raw_name() -> None:
     plan = PlannedQuery(
         question="teste",
         source="dsu_detail",
-        metrics=["revenue"],
+        metrics=["royalties"],
         dimensions=["artist"],
     )
 
@@ -94,7 +94,7 @@ def test_build_query_warner_chappell_platform_joins_exploitation_source() -> Non
     plan = PlannedQuery(
         question="teste",
         source="warner_chappell_detail",
-        metrics=["revenue"],
+        metrics=["royalties"],
         dimensions=["platform"],
     )
 
@@ -111,6 +111,49 @@ def test_build_query_rejects_metric_not_in_source() -> None:
         question="teste",
         source="dsu_detail",
         metrics=["cost"],
+        dimensions=["artist"],
+    )
+
+    with pytest.raises(ValueError, match="nao aprovadas"):
+        build_royalty_query_sql(plan)
+
+
+def test_build_query_omie_receita_custo_split() -> None:
+    plan = PlannedQuery(
+        question="teste",
+        source="omie_detail",
+        metrics=["revenue", "cost"],
+        dimensions=["period"],
+    )
+
+    sql = build_royalty_query_sql(plan)
+
+    assert "valor_liquido >= 0" in sql
+    assert "valor_liquido <= 0" in sql
+    assert "from public.ft_omie_dados_analiticos" in sql
+
+
+def test_build_query_rejects_royalties_metric_on_omie_detail() -> None:
+    # Garante a separacao de dominio: "royalties" e uma chave exclusiva das
+    # fontes de royalty, nao existe em omie_detail (financeiro).
+    plan = PlannedQuery(
+        question="teste",
+        source="omie_detail",
+        metrics=["royalties"],
+        dimensions=["period"],
+    )
+
+    with pytest.raises(ValueError, match="nao aprovadas"):
+        build_royalty_query_sql(plan)
+
+
+def test_build_query_rejects_revenue_metric_on_royalty_performance() -> None:
+    # Inverso: "revenue"/"cost" sao exclusivos de omie_detail, nao existem
+    # em royalty_performance nem nas demais fontes de royalty.
+    plan = PlannedQuery(
+        question="teste",
+        source="royalty_performance",
+        metrics=["revenue"],
         dimensions=["artist"],
     )
 

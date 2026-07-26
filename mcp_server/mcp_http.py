@@ -15,6 +15,7 @@ from mcp.server.auth.settings import AuthSettings
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
+from mcp.types import ToolAnnotations
 
 from mcp_server.oauth import JWTBearerTokenVerifier
 from mcp_server.service import (
@@ -33,6 +34,15 @@ from mcp_server.service import (
 INSTRUCTIONS = (
     "Use as tools semanticas para consultar performance de royalties no Postgres. "
     "Respostas devem permanecer em portugues do Brasil."
+)
+
+# Todas as tools deste servidor sao consultas (SELECT) ou leitura de config/catalogo
+# estatico -- nenhuma escreve no Postgres nem em qualquer outro sistema.
+_READ_ONLY_ANNOTATIONS = ToolAnnotations(
+    readOnlyHint=True,
+    destructiveHint=False,
+    idempotentHint=True,
+    openWorldHint=False,
 )
 
 
@@ -140,29 +150,33 @@ def _dsu_missed_opportunities_tool(artist: str | None = None, lookahead_days: in
 
 mcp.tool(
     name="get_royalty_catalog",
-    title="Royalty Catalog",
+    title="Catalogo de Royalties",
     description="Retorna metricas, dimensoes e fontes aprovadas do catalogo semantico de royalties.",
+    annotations=_READ_ONLY_ANNOTATIONS,
 )(_catalog_tool)
 
 mcp.tool(
     name="get_runtime_config",
-    title="Runtime Config",
+    title="Configuracao de Execucao",
     description="Retorna a configuracao efetiva do agente, com segredos redigidos.",
+    annotations=_READ_ONLY_ANNOTATIONS,
 )(_config_tool)
 
 mcp.tool(
     name="diagnose_postgres_access",
-    title="Postgres Diagnostics",
+    title="Diagnostico do Postgres",
     description="Valida acesso ao Postgres e schemas habilitados.",
+    annotations=_READ_ONLY_ANNOTATIONS,
 )(_diagnose_tool)
 
 mcp.tool(
     name="describe_schema",
-    title="Describe Schema",
+    title="Descrever Schema",
     description=(
         "Introspecta tabelas e colunas reais do Postgres via information_schema. "
         "Use para descobrir o schema real do banco de royalties."
     ),
+    annotations=_READ_ONLY_ANNOTATIONS,
 )(_describe_schema_tool)
 
 _SOURCE_DESCRIPTION = (
@@ -175,43 +189,48 @@ _SOURCE_DESCRIPTION = (
 
 mcp.tool(
     name="plan_royalty_query",
-    title="Plan Royalty Query",
+    title="Planejar Consulta de Royalties",
     description=f"Converte uma pergunta em plano semantico controlado. `source`: {_SOURCE_DESCRIPTION}",
+    annotations=_READ_ONLY_ANNOTATIONS,
 )(_plan_tool)
 
 mcp.tool(
     name="run_royalty_query",
-    title="Run Royalty Query",
+    title="Executar Consulta de Royalties",
     description=(
         f"Executa consulta controlada no Postgres e retorna plano, SQL e linhas. `source`: {_SOURCE_DESCRIPTION}"
     ),
+    annotations=_READ_ONLY_ANNOTATIONS,
 )(_run_query_tool)
 
 mcp.tool(
     name="ask_royalties",
-    title="Ask Royalties",
+    title="Perguntar sobre Royalties",
     description=(
         f"Executa a consulta e devolve resposta executiva em portugues do Brasil. `source`: {_SOURCE_DESCRIPTION}"
     ),
+    annotations=_READ_ONLY_ANNOTATIONS,
 )(_ask_tool)
 
 mcp.tool(
     name="dsu_booking_quality",
-    title="DSU Booking Quality",
+    title="Qualidade de Agendamento DSU",
     description=(
         "Percentual dos shows DSU CONFIRMADO de cada artista (ou de um artista especifico) "
         "que caem em 'dia_critico' (sexta/sabado/vespera de feriado -- as melhores noites "
         "para um show). Indicador de qualidade de agendamento."
     ),
+    annotations=_READ_ONLY_ANNOTATIONS,
 )(_dsu_booking_quality_tool)
 
 mcp.tool(
     name="dsu_missed_opportunities",
-    title="DSU Missed Opportunities",
+    title="Oportunidades Perdidas DSU",
     description=(
         "Datas futuras de 'dia_critico' que ainda nao tem contrato CONFIRMADO para um "
         "artista DSU -- oportunidades de venda ainda nao aproveitadas pela equipe de booking."
     ),
+    annotations=_READ_ONLY_ANNOTATIONS,
 )(_dsu_missed_opportunities_tool)
 
 

@@ -15,7 +15,9 @@ Arquitetura:
 Responder perguntas de performance de royalties de artistas com:
 
 - linguagem natural em portugues do Brasil
-- metricas semanticas consistentes (streams, unidades, receita, royalties)
+- metricas semanticas consistentes, com dominios deliberadamente separados:
+  royalties (streams, unidades, royalties) e financeiro (receita, custo do
+  ERP Omie) — ver referencia de vocabulario abaixo
 - graficos e tabelas como artefatos
 - relatorios PDF sob demanda
 
@@ -39,14 +41,66 @@ Responder perguntas de performance de royalties de artistas com:
 
 ## Status do schema de dados
 
-Validado em 2026-07-01 contra o Postgres de producao. O agente consulta
+Revalidado em 2026-07-24 contra o Postgres de producao. O agente consulta
 `public.vw_ft_dados_analiticos_union`, uma view que unifica a performance de
-royalties/receita de todas as origens/distribuidoras (DSU, Omie, Orchard,
-Universal, Warner Chappell, Warner Music) por artista e periodo (mes). Ver
-`config/postgres_sources.yml` e `config/column_dictionary.yml` para o
+**royalties** de todas as origens/distribuidoras de audit (DSU, Orchard,
+Universal, Warner Chappell, Warner Music) por artista e periodo (mes).
+
+**Separacao royalties x financeiro (2026-07-24)**: Omie (ERP financeiro —
+contas a pagar/receber) foi removido desta view — era uma inclusao parcial
+e acidental (ver `TODO.md`, secao Resolvido), e semanticamente e um
+dominio diferente de royalty. Omie agora vive exclusivamente na fonte
+`omie_detail`, com metricas e vocabulario proprios (Receita/Custo/
+Resultado), deliberadamente distintos de Royalties/Direitos autorais para
+nunca serem confundidos/somados numa mesma resposta — ver a referencia de
+vocabulario abaixo. Colunas da view unificada tambem foram renomeadas para
+PT-BR nesse mesmo dia.
+
+Ver `config/postgres_sources.yml` e `config/column_dictionary.yml` para o
 detalhe completo (incluindo notas de qualidade de dados) e `TODO.md` para
-pendencias de investigacao (ex.: significado de `quantity` por
-origem/tipo de receita).
+pendencias de investigacao.
+
+### Referencia de vocabulario: metricas, colunas e sinonimos
+
+Cada fonte do catalogo semantico (`semantic_catalog/catalog.yml`) declara
+seus proprios `metrics`/`dimensions`, com `expression_hint` resolvendo para
+a coluna real. O planner (`mcp_server/planner.py`) infere fonte/metrica a
+partir de palavras-chave da pergunta em PT-BR — a tabela abaixo documenta
+esse mapeamento.
+
+**Metricas**
+
+| Metric key | Dominio | Label (PT) | Coluna/expressao real | Onde existe | Sinonimos (roteamento por pergunta) |
+|---|---|---|---|---|---|
+| `royalties` | Royalty | Royalties | `valor_royalties` (uniao), `valor_liquido` (DSU), `valor_liquido_moeda_conta` (Orchard), `royalty_liquido` (Somlivre), `royalties_a_pagar` (Universal), `amount_paid_less_tax` (Warner Chappell), `royalty_payable` (Warner Music) | `royalty_performance` + todas as `*_detail` de royalty | royalties, royalty, direitos autorais, remuneração autoral, repasse, arrecadação, monetização |
+| `quantity` | Ambos | Quantidade | `quantidade` (uniao), varia por fonte (`unidades`, `units`, `sale_units`, `count(*)` para shows DSU) | `royalty_performance` + maioria das `*_detail` | quantidade, streams, unidades, shows, quantity, reproduções, playback, plays, play |
+| `revenue` | Financeiro (Omie) | Receita | `sum(valor_liquido)` onde `valor_liquido >= 0` | so `omie_detail` | receita, faturamento |
+| `cost` | Financeiro (Omie) | Custo | `sum(abs(valor_liquido))` onde `valor_liquido <= 0` | so `omie_detail` | custo, custos, despesa, despesas |
+| `resultado` | Financeiro (Omie) | Resultado | `sum(valor_liquido)` (liquido) | so `omie_detail` | lucro, resultado (roteiam a fonte, nao a metrica) |
+| `payable` | Financeiro (Omie) | A pagar/receber | `sum(a_pagar_ou_receber)` | so `omie_detail` | sem sinonimo dedicado — so via parametro `metrics` explicito |
+
+**Dimensoes** (`royalty_performance`/uniao)
+
+| Dimension key | Coluna real | Label (PT) | Sinonimos |
+|---|---|---|---|
+| `period` | `periodo` | Periodo | periodo, por mes, por data, mensal, anual, trimestre, semestre, data, dia, ano, mês |
+| `artist` | `artista` | Artista | artista, artist, cantor, cantora, banda, grupo, mc, dj, intérprete, talento, dupla, projeto, collab, colab |
+| `origem` | `plataforma_origem` | Origem | origem, distribuidora, sistema de origem, publisher, plataforma, fonte |
+| `revenue_type` | `tipo_remuneracao` | Tipo de royalty | tipo de royalty, categoria de royalty, tipo de receita, categoria de receita, revenue type, tipo de arrecadação, tipo de faturamento, rubrica, linha de receita |
+| `gravadora` | subquery via `matched_artista_id` -> `dim_artistas.gravadora` | Gravadora | gravadora, label, selo, master, master rights, produtora, companhia, produtora fonográfica |
+
+**Roteamento de fonte** (qual dominio uma pergunta acessa)
+
+| Fonte | Gatilho | Sinonimos |
+|---|---|---|
+| `royalty_performance` | fallback padrao | usada quando nada abaixo casa |
+| `omie_detail` | palavra-chave isolada | omie, financeiro, fluxo de caixa, contas a pagar, contas a receber, erp, receita, custo, custos, despesa, despesas, lucro, resultado |
+| `dsu_detail` | palavra-chave isolada | show, shows, evento, eventos, contrato de show |
+| `orchard_detail`/`universal_detail`/`somlivre_detail`/`warner_chappell_detail`/`warner_music_detail` | nome da plataforma **+** palavra-chave de faixa | plataforma: orchard / universal / som livre, somlivre, sony(music) / warner chappell(l) / warner music — combinada com: faixa, musica, compositor, isrc, obra, cancao, track |
+
+`royalties` e `revenue`/`cost` nunca coexistem na mesma fonte (validado por
+`query_builder.py` contra o catalogo) — a separacao e estrutural, nao so
+cosmetica.
 
 ## Deploy em producao (Docker)
 

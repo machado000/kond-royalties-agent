@@ -14,13 +14,21 @@ connection:
 
 # Tabela/view que o agente consulta hoje por padrao (mcp_server/query_builder.py).
 # `public.vw_ft_dados_analiticos_union` e uma view ja consolidada, unindo as
-# fact tables de todas as origens/distribuidoras (DSU, Omie, Orchard,
+# fact tables das origens/distribuidoras de ROYALTY (DSU, Orchard,
 # Universal, Warner Chappell, Warner Music) no grao artista + periodo (mes) +
-# origem + tipo de receita. 10.3M linhas observadas em 2026-07-01.
+# origem + tipo de royalty. Omie (financeiro/ERP) foi removido desta view em
+# 2026-07-24 — era uma inclusao parcial/acidental (ver TODO.md item 3) e e um
+# dominio diferente (financeiro, nao royalty); usar `omie_detail` para
+# perguntas de receita/custo. Colunas renomeadas para PT-BR em 2026-07-24
+# (`periodo`, `artista`, `plataforma_origem`, `tipo_remuneracao`,
+# `quantidade`, `valor_royalties`) — ver semantic_catalog/catalog.yml para o
+# mapeamento de expression_hint atual.
 #
 # IMPORTANTE: nao agregar/somar dados desta view com nenhuma das
 # `*_detail` abaixo (ver regra critica em config/column_dictionary.yml) —
-# sao os mesmos eventos em granularidades diferentes.
+# sao os mesmos eventos em granularidades diferentes. Tambem nao
+# agregar/comparar com `omie_detail` sem deixar explicito que sao dominios
+# financeiros diferentes (royalties x receita/custo).
 query_source:
   schema: public
   table: vw_ft_dados_analiticos_union
@@ -29,11 +37,12 @@ query_source:
 logical_sources:
   royalty_performance:
     description: >
-      View unificada de performance de royalties/receita por artista,
-      periodo (mes), origem (sistema/distribuidora) e tipo de receita.
-      Cobre streaming/publishing/master (Orchard, Universal, Warner Chappell,
-      Warner Music), shows ao vivo (DSU) e financeiro/ERP (Omie). Fonte
-      padrao (`query_source`) para perguntas cross-plataforma/agregadas.
+      View unificada de performance de royalties por artista, periodo
+      (mes), origem (sistema/distribuidora) e tipo de royalty. Cobre
+      streaming/publishing/master (Orchard, Universal, Warner Chappell,
+      Warner Music) e shows ao vivo (DSU). NAO inclui Omie (financeiro/ERP,
+      dominio separado — ver `omie_detail`). Fonte padrao (`query_source`)
+      para perguntas cross-plataforma/agregadas de royalty.
     schema: public
     table: vw_ft_dados_analiticos_union
 
@@ -59,7 +68,11 @@ logical_sources:
     schema: public
     table: vw_dsu_contratos_calendario
   omie_detail:
-    description: Contas a pagar/receber do ERP Omie (fonte de origem='Omie').
+    description: >
+      Contas a pagar/receber do ERP Omie — dominio financeiro, NAO royalty
+      (nao faz mais parte de `royalty_performance`/`vw_ft_dados_analiticos_union`
+      desde 2026-07-24). Metricas `revenue`/`cost` (receita/custo, split por
+      sinal de `valor_liquido`) — ver semantic_catalog/catalog.yml.
     schema: public
     table: ft_omie_dados_analiticos
   orchard_detail:

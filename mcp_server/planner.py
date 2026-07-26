@@ -11,47 +11,72 @@ from mcp_server.models import DateRange, PlannedQuery, RoyaltyQueryRequest
 
 
 DEFAULT_SOURCE = "royalty_performance"
-DEFAULT_METRICS = ["quantity", "revenue"]
+DEFAULT_METRICS = ["quantity", "royalties"]
 DEFAULT_DIMENSION = ["artist"]
 
+# Vocabulario de metrica deliberadamente separado por dominio (ver nota de
+# separacao em semantic_catalog/catalog.yml): "royalties" so aparece em
+# fontes de royalty, "revenue"/"cost" so em omie_detail (financeiro). Nunca
+# unificar essas duas listas — e a garantia de que uma pergunta sobre
+# "receita" nao acabe respondida com dados de royalty, e vice-versa.
 METRIC_KEYWORDS = {
     "quantity": ["quantidade", "streams", "unidades", "shows", "quantity",
                  "reproduções", "reproducoes", "playback", "plays", "play"],
-    "revenue": ["receita", "royalties", "repasse", "faturamento", "revenue"],
+    "royalties": ["royalties", "royalty", "direitos autorais", "remuneracao autoral",
+                  "remuneração autoral", "repasse", "arrecadação", "monetização"],
+    "revenue": ["receita", "faturamento"],
+    "cost": ["custo", "custos", "despesa", "despesas"],
 }
 
 DIMENSION_KEYWORDS = {
-    "artist": ["artista", "artist", "cantor", "cantora"],
-    "origem": ["origem", "distribuidora", "sistema de origem", "publisher"],
-    "revenue_type": ["tipo de receita", "categoria de receita", "revenue type"],
-    "period": ["periodo", "por mes", "por data", "mensal"],
-    "track": ["faixa", "musica", "música", "cancao", "canção", "track"],
-    "composer": ["compositor", "composer"],
-    "isrc": ["isrc"],
+    "artist": ["artista", "artist", "cantor", "cantora", "banda", "grupo", "mc",
+               "dj", "intérprete", "talento", "dupla", "projeto", "collab", "colab"],
+    "origem": ["origem", "distribuidora", "sistema de origem", "publisher", "plataforma", "fonte"],
+    "revenue_type": ["tipo de royalty", "categoria de royalty", "tipo de receita",
+                     "categoria de receita", "revenue type", "tipo de arrecadacao",
+                     "tipo de faturamento", "rubrica", "linha de receita"],
+    "period": ["periodo", "por mes", "por data", "mensal", "anual", "trimestre", "semestre",
+               "data", "dia", "ano", "mês", "temporalidade", "época", "período"],
+    "track": ["faixa", "musica", "música", "cancao", "canção", "track", "som",
+              "áudio", "single", "beat", "melodia", "composição", "obra", "fonograma"],
+    "composer": ["compositor", "composer", "autor", "escritor", "letrista",
+                 "coautor", "co-autor", "criador"],
+    "isrc": ["isrc", "código isrc", "cod isrc", "registro isrc",
+             "identificador", "id da faixa"],
     "territory": ["territorio", "pais", "country"],
-    "platform": ["plataforma", "dsp", "canal"],
-    "gravadora": ["gravadora", "label", "selo", "master", "master rights"],
-    "contratante": ["contratante"],
-    "vendedor": ["vendedor", "responsavel comercial", "agente comercial"],
-    "tipo_evento": ["tipo de evento", "tipo evento"],
-    "dia_critico": ["dia critico", "dia ideal", "noite livre", "dia de show", "dia de evento"],
+    "platform": ["plataforma", "dsp", "canal", "loja", "serviço",
+                 "app", "aplicativo", "streaming", "rede social"],
+    "gravadora": ["gravadora", "label", "selo", "master", "master rights",
+                  "produtora", "companhia", "produtora fonográfica"],
+    "contratante": ["contratante", "cliente", "parceiro", "promotor",
+                    "produtor de evento", "organizador", "patrocinador", "comprador"],
+    "vendedor": ["vendedor", "responsavel comercial", "agente comercial", "comercial",
+                 "executivo de contas", "representante", "booker", "negociador"],
+    "tipo_evento": ["tipo de evento", "tipo evento", "formato do evento",
+                    "categoria do evento", "estilo do evento", "formato de show"],
+    "dia_critico": ["dia critico", "dia ideal", "noite livre", "dia de show", "dia de evento",
+                    "data de evento", "dia principal", "data de show", "data chave"],
 }
 
 # Valores gravados na coluna `origem` (ver config/column_dictionary.yml).
+# Omie NAO e um valor valido de `origem` aqui — foi removido de
+# `royalty_performance` (ver semantic_catalog/catalog.yml); perguntas sobre
+# Omie sao roteadas para a fonte `omie_detail` via SOURCE_STANDALONE_KEYWORDS.
 FILTER_KEYWORDS = {
     "origem": {
         "DSU": ["dsu"],
-        "Omie": ["omie"],
         "Orchard": ["orchard"],
         "Universal": ["universal"],
         "Warner Chappell": ["warner chappell", "warner chappel", "warner chapel"],
         "Warner Music": ["warner music"],
     },
     "revenue_type": {
-        "Editora": ["editora", "publisher", "publishing"],
+        "Editora": ["editora", "publisher", "publishing", "autoral", "direitos autorais"],
         "Gravadora": ["gravadora", "master", "label", "selo", "master rights"],
         "Publicidade": ["publicidade", "advertising"],
-        "Shows": ["shows", "show ao vivo", "evento", "eventos", "contrato de show"],
+        "Shows": ["shows", "show ao vivo", "evento", "eventos", "contrato de show",
+                  "apresentação", "apresentacoes", "bilheteria", "cachê", "cache",
+                  "tour", "turnê", "turne", "gig", "conserto"],
     },
 }
 
@@ -59,7 +84,8 @@ FILTER_KEYWORDS = {
 # de nivel de detalhe de faixa/musica (ver TRACK_LEVEL_KEYWORDS abaixo).
 SOURCE_STANDALONE_KEYWORDS = {
     "dsu_detail": ["show", "shows", "evento", "eventos", "contrato de show"],
-    "omie_detail": ["financeiro", "fluxo de caixa", "contas a pagar", "contas a receber", "erp"],
+    "omie_detail": ["omie", "financeiro", "fluxo de caixa", "contas a pagar", "contas a receber",
+                    "erp", "receita", "custo", "custos", "despesa", "despesas", "lucro", "resultado"],
 }
 
 # Fontes de detalhe por plataforma — so inferidas quando a pergunta tambem

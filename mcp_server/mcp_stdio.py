@@ -26,40 +26,52 @@ SERVER_INFO = {
     "version": "0.1.0",
 }
 
+# Todas as tools deste servidor sao consultas (SELECT) ou leitura de config/catalogo
+# estatico -- nenhuma escreve no Postgres nem em qualquer outro sistema.
+_READ_ONLY_ANNOTATIONS = {
+    "readOnlyHint": True,
+    "destructiveHint": False,
+    "idempotentHint": True,
+    "openWorldHint": False,
+}
+
 TOOLS = [
     {
         "name": "get_royalty_catalog",
-        "title": "Royalty Catalog",
+        "title": "Catalogo de Royalties",
         "description": "Retorna metricas, dimensoes e fontes aprovadas do catalogo semantico de royalties.",
         "inputSchema": {
             "type": "object",
             "properties": {},
             "additionalProperties": False,
         },
+        "annotations": _READ_ONLY_ANNOTATIONS,
     },
     {
         "name": "get_runtime_config",
-        "title": "Runtime Config",
+        "title": "Configuracao de Execucao",
         "description": "Retorna a configuracao efetiva do agente, com segredos redigidos.",
         "inputSchema": {
             "type": "object",
             "properties": {},
             "additionalProperties": False,
         },
+        "annotations": _READ_ONLY_ANNOTATIONS,
     },
     {
         "name": "diagnose_postgres_access",
-        "title": "Postgres Diagnostics",
+        "title": "Diagnostico do Postgres",
         "description": "Valida acesso ao Postgres e schemas habilitados.",
         "inputSchema": {
             "type": "object",
             "properties": {},
             "additionalProperties": False,
         },
+        "annotations": _READ_ONLY_ANNOTATIONS,
     },
     {
         "name": "describe_schema",
-        "title": "Describe Schema",
+        "title": "Descrever Schema",
         "description": (
             "Introspecta tabelas e colunas reais do Postgres via information_schema. "
             "Use para descobrir o schema real do banco de royalties."
@@ -71,10 +83,11 @@ TOOLS = [
             },
             "additionalProperties": False,
         },
+        "annotations": _READ_ONLY_ANNOTATIONS,
     },
     {
         "name": "plan_royalty_query",
-        "title": "Plan Royalty Query",
+        "title": "Planejar Consulta de Royalties",
         "description": "Converte uma pergunta em plano semantico controlado.",
         "inputSchema": {
             "type": "object",
@@ -93,10 +106,11 @@ TOOLS = [
             "required": ["question"],
             "additionalProperties": False,
         },
+        "annotations": _READ_ONLY_ANNOTATIONS,
     },
     {
         "name": "run_royalty_query",
-        "title": "Run Royalty Query",
+        "title": "Executar Consulta de Royalties",
         "description": "Executa consulta controlada no Postgres e retorna plano, SQL e linhas.",
         "inputSchema": {
             "type": "object",
@@ -115,10 +129,11 @@ TOOLS = [
             "required": ["question"],
             "additionalProperties": False,
         },
+        "annotations": _READ_ONLY_ANNOTATIONS,
     },
     {
         "name": "dsu_booking_quality",
-        "title": "DSU Booking Quality",
+        "title": "Qualidade de Agendamento DSU",
         "description": (
             "Percentual dos shows DSU CONFIRMADO de cada artista (ou de um artista "
             "especifico) que caem em 'dia_critico' (sexta/sabado/vespera de feriado -- "
@@ -137,10 +152,11 @@ TOOLS = [
             },
             "additionalProperties": False,
         },
+        "annotations": _READ_ONLY_ANNOTATIONS,
     },
     {
         "name": "dsu_missed_opportunities",
-        "title": "DSU Missed Opportunities",
+        "title": "Oportunidades Perdidas DSU",
         "description": (
             "Datas futuras de 'dia_critico' que ainda nao tem contrato CONFIRMADO para "
             "um artista DSU -- oportunidades de venda ainda nao aproveitadas pela equipe "
@@ -165,10 +181,11 @@ TOOLS = [
             },
             "additionalProperties": False,
         },
+        "annotations": _READ_ONLY_ANNOTATIONS,
     },
     {
         "name": "ask_royalties",
-        "title": "Ask Royalties",
+        "title": "Perguntar sobre Royalties",
         "description": "Executa a consulta e devolve resposta executiva em portugues do Brasil.",
         "inputSchema": {
             "type": "object",
@@ -189,6 +206,7 @@ TOOLS = [
             "required": ["question"],
             "additionalProperties": False,
         },
+        "annotations": _READ_ONLY_ANNOTATIONS,
     },
 ]
 

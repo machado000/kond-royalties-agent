@@ -1,13 +1,15 @@
 # Dicionario de colunas do agente KOND (royalties de artistas)
 #
-# STATUS: VALIDADO contra o banco real em 2026-07-21 (re-introspeccao apos
-# mudancas de schema desde 2026-07-01 — ver `cost` em canonical_columns).
+# STATUS: VALIDADO contra o banco real em 2026-07-24 (Omie removido de
+# `vw_ft_dados_analiticos_union` + colunas renomeadas para PT-BR — ver
+# canonical_columns e a nota de separacao royalties/financeiro no topo de
+# semantic_catalog/catalog.yml).
 #
 # A tabela de consulta configurada em config/postgres_sources.yml
 # (query_source) e `public.vw_ft_dados_analiticos_union`: uma view que
-# unifica, no schema `public`, as fact tables de todas as
-# origens/distribuidoras em uma unica tabela larga. 10.3M linhas em
-# 2026-07-01, contagem nao repetida em 2026-07-21.
+# unifica, no schema `public`, as fact tables das origens/distribuidoras de
+# ROYALTY (Omie e um dominio financeiro separado, nao entra aqui — ver
+# `omie_detail`) em uma unica tabela larga. 10.264.535 linhas em 2026-07-24.
 #
 # Convencao: o nome canonico (chave) e o que o agente e o catalogo semantico
 # usam em `expression_hint` (ver semantic_catalog/catalog.yml) e nas
@@ -33,81 +35,84 @@ canonical_columns:
   # --- Dimensao temporal ---
   period:
     description: >
-      Periodo de referencia, grao MENSAL, formato texto 'AAAA-MM' (ex.:
-      '2026-05'). NAO e uma coluna DATE — comparacoes de intervalo sao
-      feitas por comparacao de string (funciona pois o formato ordena
-      lexicograficamente igual a ordenacao cronologica).
+      Periodo de referencia (mes do statement/evento), grao MENSAL, formato
+      texto 'AAAA-MM' (ex.: '2026-05'). NAO e uma coluna DATE — comparacoes
+      de intervalo sao feitas por comparacao de string (funciona pois o
+      formato ordena lexicograficamente igual a ordenacao cronologica).
+      Coluna real (renomeada 2026-07-24): `periodo`.
     type: TEXT
-    source: public.vw_ft_dados_analiticos_union.period
+    source: public.vw_ft_dados_analiticos_union.periodo
     notes:
-      - "Existe tambem `revenue_period`, identico a `period` em todas as amostras observadas."
+      - "Existe tambem `periodo_receita` (renomeada de `revenue_period`
+         2026-07-24) — NAO e identica a `period` para a maioria das
+         origens: e `periodo + 3 meses` (funcao `add_months_yyyy_mm`),
+         representando o mes esperado de recebimento (lag contabil tipico
+         de statements), exceto para DSU onde e igual a `periodo` (shows
+         sao pagos no proprio mes/data do evento, sem lag). Nao exposta
+         como dimensao no catalogo semantico ainda."
 
   # --- Dimensao de artista ---
   artist:
     description: >
       Nome do artista ja normalizado/casado (matched) contra
-      `dim_artistas`. Preferir esta coluna a `artist_raw` (nome bruto como
-      veio do arquivo de origem, antes do matching).
+      `dim_artistas`. Preferir esta coluna a `artista_raw` (nome bruto como
+      veio do arquivo de origem, antes do matching). Coluna real: `artista`.
     type: TEXT
-    source: public.vw_ft_dados_analiticos_union.artist
+    source: public.vw_ft_dados_analiticos_union.artista
 
   # --- Dimensao de origem/distribuidora ---
   origem:
     description: >
-      Sistema/distribuidora de onde a linha veio. Valores observados:
-      'DSU', 'Omie', 'Orchard', 'Universal', 'Warner Chappell', 'Warner Music'.
+      Sistema/distribuidora de onde a linha veio. Coluna real (renomeada
+      2026-07-24, era `origem`): `plataforma_origem`. Valores observados:
+      'DSU', 'Orchard', 'Universal', 'Warner Chappell', 'Warner Music'.
     type: TEXT
-    source: public.vw_ft_dados_analiticos_union.origem
+    source: public.vw_ft_dados_analiticos_union.plataforma_origem
     notes:
-      - "'Omie' e um sistema de ERP financeiro (contas a pagar/receber), nao
-         um distribuidor de streaming — misturado nesta view junto com as
-         fontes de royalties propriamente ditas."
+      - "'Omie' NAO aparece mais aqui — removido da uniao em 2026-07-24
+         (era uma inclusao parcial/acidental, ver TODO.md item 3 e
+         data_quality_notes abaixo). Omie e um sistema de ERP financeiro,
+         dominio separado de royalty — usar a fonte `omie_detail`."
       - "'DSU' cobre contratos/shows ao vivo (ver revenue_type='Shows'), nao
          apenas royalties de gravacao/edicao."
 
-  # --- Dimensao de tipo de receita ---
+  # --- Dimensao de tipo de royalty ---
   revenue_type:
     description: >
-      Categoria/linha de negocio da receita. Valores observados: 'Editora'
-      (publishing), 'Gravadora' (master/gravacao), 'Publicidade', 'Shows',
-      'N/D' (nao definido).
+      Categoria/linha de negocio do royalty. Coluna real (renomeada
+      2026-07-24, era `revenue_type`): `tipo_remuneracao`. Valores
+      observados: 'Editora' (publishing), 'Gravadora' (master/gravacao),
+      'Publicidade', 'Shows', 'N/D' (nao definido).
     type: TEXT
-    source: public.vw_ft_dados_analiticos_union.revenue_type
+    source: public.vw_ft_dados_analiticos_union.tipo_remuneracao
 
   # --- Metricas ---
   quantity:
     description: >
       Semantica mapeada por origem (TODO.md item 2, confirmado 2026-07-22):
       DSU (revenue_type='Shows') — sempre 1, contagem de shows/contratos,
-      NAO de streams. Omie (todos os revenue_type) — sempre NULL, nao
-      aplicavel (Omie e financeiro/ERP, sem conceito de "quantidade").
-      Orchard/Universal/Warner Chappell/Warner Music (todos com
-      revenue_type='Gravadora' na view unificada) — contagem real de
-      streams/plays, valores tipicamente grandes (ate ~2*10^8 observado em
-      Orchard); valores NEGATIVOS ocasionais em todas as 4 platforms sao
-      esperados — linhas de ajuste/estorno de statements anteriores, nao
-      erro de dado.
+      NAO de streams. Orchard/Universal/Warner Chappell/Warner Music
+      (todos com revenue_type='Gravadora' na view unificada) — contagem
+      real de streams/plays, valores tipicamente grandes (ate ~2*10^8
+      observado em Orchard); valores NEGATIVOS ocasionais em todas as 4
+      platforms sao esperados — linhas de ajuste/estorno de statements
+      anteriores, nao erro de dado. Coluna real (renomeada 2026-07-24, era
+      `quantity`): `quantidade`. Omie (que sempre tinha `quantity` NULL,
+      sem conceito de "quantidade") nao esta mais nesta view.
     type: NUMERIC
-    source: public.vw_ft_dados_analiticos_union.quantity
+    source: public.vw_ft_dados_analiticos_union.quantidade
 
-  revenue:
+  royalties:
     description: >
-      Valor monetario associado a linha (receita/royalty). Pode ser 0 (ex.:
-      linhas de shows sem valor apurado ainda).
+      Valor de royalties associado a linha. Pode ser 0 (ex.: linhas de
+      shows sem valor apurado ainda). Coluna real: `valor_royalties`
+      (renomeada de `valor_liquido` em 2026-07-24; chave do catalogo
+      semantico renomeada de `revenue` para `royalties` no mesmo dia —
+      ver nota de separacao royalties/financeiro no topo de
+      semantic_catalog/catalog.yml). NUNCA combinar/comparar com
+      `revenue`/`cost` de `omie_detail` — dominios financeiros diferentes.
     type: NUMERIC
-    source: public.vw_ft_dados_analiticos_union.revenue
-
-  cost:
-    description: >
-      Custo/despesa associada a linha — coluna nova desde 2026-07-01, ainda
-      nao exposta no catalogo semantico. Muito esparsa (2.768 de 10.3M
-      linhas em 2026-07-21) e observada SOMENTE para origem='Omie' (ERP
-      financeiro), cobrindo varios revenue_type (Shows, N/D, Publicidade,
-      Editora, Gravadora). Representa o lado "a pagar"/despesa do Omie,
-      distinto de `revenue` (lado recebido). Nao usar para outras origens —
-      sempre 0/nulo nelas nas amostras observadas.
-    type: NUMERIC
-    source: public.vw_ft_dados_analiticos_union.cost
+    source: public.vw_ft_dados_analiticos_union.valor_royalties
 
   # --- Colunas presentes na view mas AINDA NAO expostas no catalogo semantico ---
   # (documentadas para referencia futura, nao usadas em mcp_server/query_builder.py)
@@ -115,18 +120,26 @@ canonical_columns:
     description: "Razao social da entidade legal associada a linha (ex.: gravadora/empresa do artista)."
     type: TEXT
     source: public.vw_ft_dados_analiticos_union.razao_social
-  origin_table:
-    description: Nome da fact table de origem antes da uniao (lineage/debug).
+  tabela_origem:
+    description: >
+      Nome da fact table de origem antes da uniao (lineage/debug).
+      Renomeada de `origin_table` em 2026-07-24.
     type: TEXT
-    source: public.vw_ft_dados_analiticos_union.origin_table
+    source: public.vw_ft_dados_analiticos_union.tabela_origem
   matched_artista_id:
     description: FK para public.dim_artistas.id — permite enriquecer com gravadora, CPF, IDs por plataforma, etc.
     type: INTEGER
     source: public.vw_ft_dados_analiticos_union.matched_artista_id
-  artist_raw:
-    description: Nome do artista como veio do arquivo de origem, antes do matching contra dim_artistas.
+  matched_artista_keyword:
+    description: Keyword de dim_artistas.artista_keyword que deu match (fuzzy ILIKE) para resolver o artista da linha.
     type: TEXT
-    source: public.vw_ft_dados_analiticos_union.artist_raw
+    source: public.vw_ft_dados_analiticos_union.matched_artista_keyword
+  artista_raw:
+    description: >
+      Nome do artista como veio do arquivo de origem, antes do matching
+      contra dim_artistas. Renomeada de `artist_raw` em 2026-07-24.
+    type: TEXT
+    source: public.vw_ft_dados_analiticos_union.artista_raw
 
 # Tabelas de detalhe por plataforma/origem — dados "limpos" por plataforma
 # individual, usados para perguntas que pedem granularidade que a view
@@ -305,10 +318,15 @@ detail_tables:
 
   public.ft_omie_dados_analiticos:
     description: >
-      Contas a pagar/receber do ERP Omie (fonte de origem='Omie' na view
-      unificada). 30 colunas — financeiro geral, nao especifico de
-      royalties/streaming. 9.123 linhas (2026-07-23, cresce continuamente
-      — e um feed financeiro vivo). ATENCAO: filtrada por
+      Contas a pagar/receber do ERP Omie — dominio financeiro, NAO royalty
+      (nao faz parte de `vw_ft_dados_analiticos_union`/`royalty_performance`
+      desde 2026-07-24, ver data_quality_notes abaixo). 30 colunas —
+      financeiro geral, nao especifico de royalties/streaming. 9.123
+      linhas (2026-07-23, cresce continuamente — e um feed financeiro
+      vivo). Metricas do catalogo semantico (`omie_detail`): `revenue`
+      (receita, soma de valor_liquido positivo), `cost` (custo, soma de
+      valor_liquido negativo em modulo), `resultado` (soma direta de
+      valor_liquido), `payable` (a_pagar_ou_receber). ATENCAO: filtrada por
       `dim_omie_grupo` — qualquer linha cujo `grupo` nao esteja marcado
       `ativo=true` em `dim_omie_grupo` e excluida silenciosamente desta
       view (ver `public.dim_omie_grupo` abaixo). Isso significa que
@@ -713,13 +731,12 @@ tables:
     - ft_dsu_controle_contratos         # tabela base — ver detail_tables sobre dedup por contrato
     - ft_dsu_dados_analiticos          # SUPERSEDIDA para dsu_detail (usa vw_dsu_contratos_calendario) — NAO alimenta a uniao (essa le ft_dsu_controle_contratos direto), ver detail_tables
     - vw_dsu_contratos_calendario       # ATUAL — fonte real de dsu_detail desde 2026-07-23, ver detail_tables
-    - ft_omie_dados_analiticos         # fonte de origem='Omie' na view unificada — ver detail_tables
+    - ft_omie_dados_analiticos         # ERP financeiro, dominio separado — NAO entra na view unificada desde 2026-07-24 — ver detail_tables/omie_detail
     - ft_orchard_dados_analiticos      # fonte de origem='Orchard' na view unificada — ver detail_tables
     - ft_somlivre_sonymusic            # CONFIRMADO fora da view unificada — fonte separada, so via somlivre_detail, ver detail_tables
     - ft_universal_dados_analiticos    # fonte de origem='Universal' na view unificada — ver detail_tables
     - ft_warner_chappell_dados_analiticos  # fonte de origem='Warner Chappell' — ver detail_tables (preferir warner_chappell.stg_warner_statement)
     - ft_warner_music_dados_analiticos # fonte de origem='Warner Music' na view unificada — ver detail_tables
-    - mv_ft_dados_analiticos_agg       # materialized view, pre-agregada (artist+period+origem+revenue_type) a partir de vw_ft_dados_analiticos_union, exclui origem='Omie' — NAO usada pelo agente hoje, 332 linhas em 2026-07-22
     - mv_ft_orchard_revenue            # materialized view por tras de ft_orchard_dados_analiticos (ver essa view)
     - mv_ft_universal_magmedia         # materialized view por tras de ft_universal_dados_analiticos (ver essa view)
     - stg_omie_consolidado
@@ -727,7 +744,7 @@ tables:
     - stg_somlivre_sonymusic
     - stg_warner_music_details
     - vw_debug_dsu_dados_analiticos               # IGNORAR — etapa de normalizacao, ver regra critica no topo
-    - vw_debug_omie_dados_analiticos              # IGNORAR
+    - vw_debug_omie_dados_analiticos              # IGNORAR — orfa desde 2026-07-24, ja NAO alimenta vw_ft_dados_analiticos_union (Omie removido da uniao)
     - vw_debug_orchard_dados_analiticos           # IGNORAR
     - vw_debug_universal_dados_analiticos         # IGNORAR
     - vw_debug_warner_chappell_dados_analiticos   # IGNORAR
@@ -749,7 +766,34 @@ tables:
 
 data_quality_notes:
   public.vw_ft_dados_analiticos_union:
-    - "10.264.535 linhas (2026-07-24, re-contado — era 10.3M em 2026-07-01)."
+    - "RESOLVIDO (2026-07-24, TODO.md item 3): Omie foi REMOVIDO desta
+       view. Era uma inclusao PARCIAL e instavel, nao uma escolha
+       deliberada — `vw_debug_omie_dados_analiticos` exigia match de
+       artista bem-sucedido (fuzzy ILIKE contra dim_artistas.artista_keyword,
+       pouco preenchido) para uma linha de Omie entrar na uniao, e a
+       contagem de linhas Omie flutuou entre 11 e 5.162 em sessoes
+       distintas (evidencia de escrita concorrente em dim_artistas fora
+       deste repositorio). Mais fundamental: Omie e um ERP financeiro
+       (contas a pagar/receber), semanticamente diferente das plataformas
+       de audit de royalty (DSU/Orchard/Universal/Warner Chappell/Warner
+       Music) — misturar as duas produzia respostas confusas. Omie agora
+       vive exclusivamente em `omie_detail`, com metricas proprias
+       (`revenue`/`cost`, rotulos \"Receita\"/\"Custo\") deliberadamente
+       distintas de `royalties` (rotulo \"Royalties\") usada por todas as
+       fontes de royalty — ver nota de separacao no topo de
+       semantic_catalog/catalog.yml. Colunas da view tambem foram
+       renomeadas para PT-BR neste mesmo dia (`period`->`periodo`,
+       `artist`->`artista`, `origem`->`plataforma_origem`,
+       `revenue_type`->`tipo_remuneracao`, `quantity`->`quantidade`,
+       `revenue`->`valor_liquido`->`valor_royalties` (renomeada duas vezes
+       no mesmo dia); `origin_table`->`tabela_origem`,
+       `artist_raw`->`artista_raw`) — ver canonical_columns para o
+       mapeamento coluna a coluna. Coluna `cost` deixou de existir nesta
+       view (era exclusiva de Omie)."
+    - "10.264.535 linhas (2026-07-24, ANTES da remocao do Omie — ainda nao
+       recontado pos-remocao; a fatia de Omie era pequena e instavel, ver
+       nota acima, entao a contagem nova deve ser proxima mas nao foi
+       revalidada)."
     - "CORRIGIDO (2026-07-24): `vw_debug_dsu_dados_analiticos` (a fonte de
        origem='DSU' nesta uniao) tinha DOIS problemas de contagem —
        (1) lia `ft_dsu_controle_contratos` direto, sem deduplicar os 25
@@ -764,43 +808,30 @@ data_quality_notes:
        `vw_dsu_contratos_calendario` (deduplicada) com `WHERE status =
        'CONFIRMADO'` — mesmo criterio ja usado pelo skill/tools
        `dsu-dia-critico`/`dsu_booking_quality`/`dsu_missed_opportunities`.
-       DSU agora: 876 linhas (era 1.363), receita R$19.669.462,75 (era
+       DSU agora: 876 linhas (era 1.363), royalties R$19.669.462,75 (era
        R$37.463.148,26)."
-    - "period/revenue_period sao TEXT em grao mensal ('AAAA-MM'), identicos em
-       todas as amostras observadas — nao ha granularidade diaria nesta view."
-    - "origem inclui 'Omie' (ERP financeiro geral) e 'DSU' (shows ao vivo),
-       nao apenas distribuidoras de streaming/publishing — 'performance de
-       royalties' nesta base e mais amplo, cobrindo qualquer receita
-       associada a um artista."
-    - "quantity mapeado por origem (TODO.md item 2, 2026-07-22) — ver
-       canonical_columns.quantity para o detalhe completo."
+    - "periodo/periodo_receita sao TEXT em grao mensal ('AAAA-MM'). Ao
+       contrario do que se pensava antes (nota antiga dizia que eram
+       identicas), `periodo_receita` = `periodo + 3 meses` para
+       Orchard/Universal/Warner Chappell/Warner Music (lag contabil tipico
+       de statement), e so e igual a `periodo` para DSU (shows pagos no
+       proprio mes). Nao ha granularidade diaria nesta view."
+    - "origem (agora `plataforma_origem`) cobre DSU (shows ao vivo) e as
+       4 plataformas de audit de streaming/publishing/master — Omie NAO
+       aparece mais aqui (ver nota de remocao acima)."
+    - "quantity (agora `quantidade`) mapeado por origem (TODO.md item 2,
+       2026-07-22) — ver canonical_columns.quantity para o detalhe
+       completo."
     - "CONFIRMADO (2026-07-22, TODO.md item 1): ft_somlivre_sonymusic NAO
        esta incluida nesta view. `pg_get_viewdef` mostra que a view uniona
-       exatamente 6 `vw_debug_*` (DSU, Omie, Orchard, Universal, Warner
-       Chappell, Warner Music) — nao existe `vw_debug_somlivre_sonymusic`.
-       E uma fonte separada, so acessivel via `somlivre_detail`."
-    - "origem='Omie' e uma inclusao PARCIAL e instavel, nao uma escolha
-       deliberada (TODO.md item 3, investigado 2026-07-22, reconfirmado
-       2026-07-24): `vw_debug_omie_dados_analiticos` exige
-       `da.id IS NOT NULL` (match de artista bem-sucedido via fuzzy ILIKE
-       contra dim_artistas.artista_keyword) para uma linha de Omie entrar
-       na uniao. Como artista_keyword esta pouco preenchido (ver TODO.md
-       item 9), a contagem de linhas de Omie na view continua mudando
-       entre sessoes distintas, nao so dentro de uma unica sessao: 11 ->
-       1944 -> 2001 -> 2004 (2026-07-22, ~5min) -> 5162 (2026-07-24) —
-       mais que dobrou de uma sessao pra outra, confirmando escrita
-       concorrente continua em dim_artistas fora deste repositorio (nao
-       so um pico isolado). A fatia de Omie hoje representa so as linhas
-       cujo `projeto` coincide por acaso com uma das poucas keywords
-       cadastradas, nao o financeiro completo do Omie (que soma bem
-       diferente do que aparece aqui) — decisao de manter/filtrar
-       pendente com o time, ver TODO.md."
-    - "coluna `cost` adicionada desde 2026-07-01: muito esparsa, so
-       observada para origem='Omie'. Ver canonical_columns.cost — a
-       contagem exata de linhas com cost preenchido tambem varia junto com
-       a instabilidade de origem='Omie' descrita acima."
+       exatamente 5 `vw_debug_*` (DSU, Orchard, Universal, Warner
+       Chappell, Warner Music — Omie removido em 2026-07-24) — nao existe
+       `vw_debug_somlivre_sonymusic`. E uma fonte separada, so acessivel
+       via `somlivre_detail`."
     - "NAO agregar com nenhuma detail_table (ver regra critica no topo do
-       arquivo) — duplicaria valores ja contabilizados na uniao."
+       arquivo) — duplicaria valores ja contabilizados na uniao. Tambem
+       NAO agregar/comparar `royalties` desta view com `revenue`/`cost` de
+       `omie_detail` — sao dominios financeiros diferentes."
   universal:
     - "dim_musica e dim_compositor documentadas em detail_tables — uteis
        para enriquecer analises por faixa/compositor a partir de

@@ -6,13 +6,13 @@ from mcp_server.planner import plan_royalty_query
 
 def test_plan_infers_metrics_dimensions_and_date_range() -> None:
     request = RoyaltyQueryRequest(
-        question="Como foram quantidade e receita por artista nos ultimos 7 dias?"
+        question="Como foram quantidade e royalties por artista nos ultimos 7 dias?"
     )
 
     plan = plan_royalty_query(request, today=date(2026, 6, 26))
 
     assert plan.source == "royalty_performance"
-    assert plan.metrics == ["quantity", "revenue"]
+    assert plan.metrics == ["quantity", "royalties"]
     assert "artist" in plan.dimensions
     assert plan.date_range is not None
     assert plan.date_range.start_date == "2026-06-20"
@@ -20,13 +20,41 @@ def test_plan_infers_metrics_dimensions_and_date_range() -> None:
 
 
 def test_plan_infers_origem_filter() -> None:
-    request = RoyaltyQueryRequest(question="Mostre receita da Orchard por tipo de receita")
+    request = RoyaltyQueryRequest(question="Mostre royalties da Orchard por tipo de royalty")
 
     plan = plan_royalty_query(request, today=date(2026, 6, 26))
 
     assert plan.source == "royalty_performance"
     assert plan.filters["origem"] == "Orchard"
     assert "revenue_type" in plan.dimensions
+
+
+def test_plan_infers_omie_source_from_receita_keyword() -> None:
+    request = RoyaltyQueryRequest(question="Qual foi a receita da empresa no ultimo mes?")
+
+    plan = plan_royalty_query(request, today=date(2026, 6, 26))
+
+    assert plan.source == "omie_detail"
+    assert "revenue" in plan.metrics
+    assert "royalties" not in plan.metrics
+
+
+def test_plan_infers_omie_source_from_custo_keyword() -> None:
+    request = RoyaltyQueryRequest(question="Quanto foi o custo em fevereiro?")
+
+    plan = plan_royalty_query(request, today=date(2026, 6, 26))
+
+    assert plan.source == "omie_detail"
+    assert "cost" in plan.metrics
+
+
+def test_omie_keyword_routes_to_source_not_origem_filter() -> None:
+    request = RoyaltyQueryRequest(question="Mostre dados do Omie por projeto")
+
+    plan = plan_royalty_query(request, today=date(2026, 6, 26))
+
+    assert plan.source == "omie_detail"
+    assert "origem" not in plan.filters
 
 
 def test_plan_infers_detail_source_from_track_level_question() -> None:
@@ -66,10 +94,11 @@ def test_plan_infers_ultimo_ano_date_range() -> None:
 
 
 def test_plan_infers_gravadora_dimension() -> None:
-    request = RoyaltyQueryRequest(question="Receita por gravadora")
+    request = RoyaltyQueryRequest(question="Royalties por gravadora")
 
     plan = plan_royalty_query(request, today=date(2026, 6, 26))
 
+    assert plan.source == "royalty_performance"
     assert "gravadora" in plan.dimensions
 
 

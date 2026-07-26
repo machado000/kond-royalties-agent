@@ -8,7 +8,7 @@ Repositorio: `~/Projetos/KOND-analytics-agent`
 PYTHONPATH=. .venv/bin/python -m pytest -q
 ```
 
-Resultado validado: `14 passed`.
+Resultado validado (2026-07-24): `47 passed`.
 
 ## CLI local (stdio) — dev
 
@@ -17,9 +17,9 @@ PYTHONPATH=. .venv/bin/python -m mcp_server.server config
 PYTHONPATH=. .venv/bin/python -m mcp_server.server catalog
 PYTHONPATH=. .venv/bin/python -m mcp_server.server diagnose-postgres
 PYTHONPATH=. .venv/bin/python -m mcp_server.server describe-schema --schema public
-PYTHONPATH=. .venv/bin/python -m mcp_server.server plan-query --question "Como foram quantidade e receita por artista nos ultimos 90 dias?"
-PYTHONPATH=. .venv/bin/python -m mcp_server.server run-query --question "Como foram quantidade e receita por artista nos ultimos 90 dias?" --limit 20
-PYTHONPATH=. .venv/bin/python -m mcp_server.server ask --question "Como foram quantidade e receita por artista nos ultimos 90 dias?" --limit 20
+PYTHONPATH=. .venv/bin/python -m mcp_server.server plan-query --question "Como foram quantidade e royalties por artista nos ultimos 90 dias?"
+PYTHONPATH=. .venv/bin/python -m mcp_server.server run-query --question "Como foram quantidade e royalties por artista nos ultimos 90 dias?" --limit 20
+PYTHONPATH=. .venv/bin/python -m mcp_server.server ask --question "Como foram quantidade e royalties por artista nos ultimos 90 dias?" --limit 20
 ```
 
 Resultados validados: `diagnose-postgres` -> `status: ok`, schemas
@@ -75,7 +75,33 @@ todos com `200 OK` apos sessao autenticada criada.
 
 ## Servidor MCP (stdio)
 
-Validado manualmente via `initialize` + `tools/list` — retorna os 7 tools
+Validado manualmente via `initialize` + `tools/list` — retorna os 9 tools
 esperados (`get_royalty_catalog`, `get_runtime_config`,
 `diagnose_postgres_access`, `describe_schema`, `plan_royalty_query`,
-`run_royalty_query`, `ask_royalties`).
+`run_royalty_query`, `ask_royalties`, `dsu_booking_quality`,
+`dsu_missed_opportunities`).
+
+## Smoke test pos-deploy por dominio (2026-07-24)
+
+Apos a separacao royalties x financeiro, `scripts/deploy.sh "pergunta"`
+so testa um dominio por vez. Validar os dois quando a mudanca afetar
+`planner.py`/`catalog.yml`:
+
+```bash
+scripts/deploy.sh "Como foram as royalties por artista nos ultimos 90 dias?"
+# depois, sem rebuild — so contra o endpoint ja deployado:
+# (ver scripts/deploy.sh linhas 44-68 para o padrao de curl com sessao MCP)
+# pergunta financeira de teste: "Qual foi a receita e o custo da empresa no ultimo mes?"
+```
+
+Resultado validado: royalty -> fonte `royalty_performance`,
+`sum(valor_royalties)`; financeiro -> fonte `omie_detail`, metricas
+`revenue`/`cost` (Receita R$907.076,77 / Custo R$424.388,43 no periodo
+testado).
+
+**Cuidado**: a tool MCP `kond_royalties` disponivel numa sessao Claude
+Code local pode ser um processo stdio de longa duracao que nao recarrega
+`mcp_server/*.py` editado na sessao (config/YAML e sempre lido fresco,
+codigo Python nao) — para validar mudancas de logica do planner, testar
+contra o endpoint HTTP de producao recem-deployado (curl direto, como
+acima) em vez de confiar na tool MCP local sem reiniciar a sessao.

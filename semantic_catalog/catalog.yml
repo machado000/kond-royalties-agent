@@ -11,7 +11,7 @@
 #
 # `royalty_performance` (a view unificada) e a fonte padrao — usar para
 # perguntas cross-plataforma/agregadas por artista+periodo+origem+tipo de
-# receita. As demais fontes (`*_detail`) sao dados "limpos" de UMA
+# royalty. As demais fontes (`*_detail`) sao dados "limpos" de UMA
 # plataforma especifica, usados quando a pergunta pede granularidade que a
 # view unificada nao tem (faixa, compositor, ISRC, territorio, DSP, etc.).
 #
@@ -19,57 +19,71 @@
 # `*_detail`, nem duas `*_detail` entre si, na mesma consulta — sao os
 # mesmos eventos em granularidades diferentes (duplicaria valores). Ver
 # config/column_dictionary.yml para o detalhe completo.
+#
+# SEPARACAO ROYALTIES x FINANCEIRO (2026-07-24): Omie e um ERP financeiro
+# (contas a pagar/receber), nao uma plataforma de audit de royalties — foi
+# removido de `vw_ft_dados_analiticos_union`/`royalty_performance` (so
+# tinha inclusao parcial/acidental ali, ver historico em TODO.md item 3).
+# As duas familias de metrica agora tem chaves e rotulos deliberadamente
+# distintos para nunca serem confundidas: fontes de royalty (
+# `royalty_performance`, `dsu_detail`, `orchard_detail`, `somlivre_detail`,
+# `universal_detail`, `warner_chappell_detail`, `warner_music_detail`) usam
+# a chave/metrica `royalties` (rotulo "Royalties"/"Direitos autorais"); a
+# fonte financeira (`omie_detail`) usa as chaves `revenue`/`cost` (rotulos
+# "Receita"/"Custo"). Nunca somar/comparar `royalties` com `revenue`/`cost`
+# na mesma resposta sem deixar explicito que sao dominios diferentes.
 
 sources:
 
   royalty_performance:
     default: true
     description: >
-      View unificada de performance de royalties/receita por artista,
-      periodo (mes), origem (sistema/distribuidora) e tipo de receita.
-      Cobre streaming/publishing/master (Orchard, Universal, Warner
-      Chappell, Warner Music), shows ao vivo (DSU) e financeiro/ERP (Omie).
-      Fonte padrao para perguntas cross-plataforma/agregadas. Nao tem
-      dimensao de faixa/musica/compositor/ISRC/territorio — usar uma fonte
-      `*_detail` quando a pergunta pedir esse nivel de detalhe.
+      View unificada de performance de royalties por artista, periodo
+      (mes), origem (sistema/distribuidora) e tipo de royalty. Cobre
+      streaming/publishing/master (Orchard, Universal, Warner Chappell,
+      Warner Music) e shows ao vivo (DSU). NAO inclui o financeiro/ERP
+      Omie — Omie e um dominio diferente (financeiro, nao royalty), usar a
+      fonte `omie_detail` para perguntas de receita/custo/fluxo de caixa.
+      Fonte padrao para perguntas cross-plataforma/agregadas de royalty.
+      Nao tem dimensao de faixa/musica/compositor/ISRC/territorio — usar
+      uma fonte `*_detail` quando a pergunta pedir esse nivel de detalhe.
     metrics:
       quantity:
         label: Quantidade
         description: >
           Quantidade associada a linha. O significado varia por
-          origem/tipo de receita (streams, unidades vendidas, contagem de
+          origem/tipo de royalty (streams, unidades vendidas, contagem de
           shows, etc.) — ver config/column_dictionary.yml.
-        expression_hint: sum(quantity)
-      revenue:
-        label: Receita
-        description: Valor monetario (receita/royalty) associado a linha.
-        expression_hint: sum(revenue)
-      cost:
-        label: Custo
+        expression_hint: sum(quantidade)
+      royalties:
+        label: Royalties
         description: >
-          Custo/despesa associado a linha. Muito esparso, observado apenas
-          para origem='Omie' — ver config/column_dictionary.yml.
-        expression_hint: sum(cost)
+          Valor de royalties/direitos autorais associado a linha. Nunca
+          combinar/comparar com `revenue`/`cost` de `omie_detail` — sao
+          dominios financeiros diferentes.
+        expression_hint: sum(valor_royalties)
     dimensions:
       period:
         label: Periodo
         description: Mes de referencia, formato 'AAAA-MM' (grao mensal, nao diario).
+        expression_hint: periodo
       artist:
         label: Artista
         description: Nome do artista normalizado (casado contra o cadastro de artistas).
+        expression_hint: artista
       origem:
         label: Origem
         description: >
-          Sistema/distribuidora de origem da linha (DSU, Omie, Orchard,
-          Universal, Warner Chappell, Warner Music). Atencao: a fatia
-          origem='Omie' aqui e PARCIAL — so inclui linhas do financeiro
-          Omie cujo projeto casou com um artista cadastrado (cobertura
-          baixa e instavel); nao representa o financeiro Omie completo.
-          Para uma visao financeira completa do Omie, usar a fonte
-          `omie_detail`.
+          Sistema/distribuidora de origem da linha (DSU, Orchard,
+          Universal, Warner Chappell, Warner Music). Omie NAO aparece
+          aqui (removido de `vw_ft_dados_analiticos_union` em 2026-07-24
+          — era uma inclusao parcial/acidental, ver TODO.md item 3); usar
+          `omie_detail` para dados financeiros Omie.
+        expression_hint: plataforma_origem
       revenue_type:
-        label: Tipo de receita
-        description: Categoria da receita (Editora, Gravadora, Publicidade, Shows, N/D).
+        label: Tipo de royalty
+        description: Categoria do royalty (Editora, Gravadora, Publicidade, Shows, N/D).
+        expression_hint: tipo_remuneracao
       gravadora:
         label: Gravadora
         description: >
@@ -88,8 +102,8 @@ sources:
       mais recente por status) — `count(*)` conta contratos reais, sem
       risco de contagem dupla.
     metrics:
-      revenue:
-        label: Receita
+      royalties:
+        label: Royalties
         expression_hint: sum(valor_liquido)
       shows:
         label: Shows
@@ -140,12 +154,27 @@ sources:
 
   omie_detail:
     description: >
-      Financeiro/ERP Omie (contas a pagar/receber). Sem dimensao de
-      faixa/musica; artista e apenas um proxy (projeto Omie), nao
-      normalizado.
+      Financeiro/ERP Omie (contas a pagar/receber) — dominio financeiro,
+      NAO royalty (ver nota de separacao no topo deste arquivo). Sem
+      dimensao de faixa/musica; artista e apenas um proxy (projeto Omie),
+      nao normalizado.
     metrics:
       revenue:
-        label: Valor liquido
+        label: Receita
+        description: >
+          Receita bruta (soma das linhas com valor_liquido positivo).
+          Nunca combinar/comparar com `royalties` de outras fontes — sao
+          dominios financeiros diferentes.
+        expression_hint: "sum(case when valor_liquido >= 0 then valor_liquido else 0 end)"
+      cost:
+        label: Custo
+        description: >
+          Custo/despesa (soma, em valor absoluto, das linhas com
+          valor_liquido negativo).
+        expression_hint: "sum(case when valor_liquido <= 0 then valor_liquido * -1 else 0 end)"
+      resultado:
+        label: Resultado
+        description: Resultado liquido (receita - custo, soma direta de valor_liquido).
         expression_hint: sum(valor_liquido)
       payable:
         label: A pagar/receber
@@ -173,8 +202,8 @@ sources:
       Reproducoes digitais Orchard. Tem faixa, ISRC, territorio e DSP —
       ausentes na view unificada.
     metrics:
-      revenue:
-        label: Receita
+      royalties:
+        label: Royalties
         expression_hint: sum(valor_liquido_moeda_conta)
       quantity:
         label: Quantidade
@@ -197,7 +226,7 @@ sources:
         label: Plataforma
         expression_hint: plataforma
       revenue_type:
-        label: Tipo de receita
+        label: Tipo de royalty
         expression_hint: tipo_receita
 
   somlivre_detail:
@@ -208,7 +237,7 @@ sources:
       usa-la isoladamente, mas tambem nao ha como cruzar com origem='...'
       na view unificada (Som Livre simplesmente nao aparece la).
     metrics:
-      revenue:
+      royalties:
         label: Royalty liquido
         expression_hint: sum(royalty_liquido)
       quantity:
@@ -234,7 +263,7 @@ sources:
       Reproducoes digitais Universal Music. Tem faixa e compositor —
       ausentes na view unificada.
     metrics:
-      revenue:
+      royalties:
         label: Royalties a pagar
         expression_hint: sum(royalties_a_pagar)
       quantity:
@@ -256,7 +285,7 @@ sources:
         label: Plataforma
         expression_hint: plataforma
       revenue_type:
-        label: Tipo de receita
+        label: Tipo de royalty
         expression_hint: tipo_receita
 
   warner_chappell_detail:
@@ -266,7 +295,7 @@ sources:
       `ft_warner_statement`, que ficou congelada em 2025-12). Tem obra
       (work), compositor e territorio — ausentes na view unificada.
     metrics:
-      revenue:
+      royalties:
         label: Valor pago (liquido de impostos)
         expression_hint: sum(amount_paid_less_tax)
       quantity:
@@ -301,7 +330,7 @@ sources:
           where d.income_provider_name = stg_warner_statement.income_provider_name
           and d.exploitation_source = stg_warner_statement.exploitation_source limit 1)
       revenue_type:
-        label: Tipo de receita
+        label: Tipo de royalty
         expression_hint: tango_income_type_name
 
   warner_music_detail:
@@ -309,7 +338,7 @@ sources:
       Reproducoes digitais Warner Music. Tem faixa, ISRC, DSP e territorio
       — ausentes na view unificada.
     metrics:
-      revenue:
+      royalties:
         label: Royalty a pagar
         expression_hint: sum(royalty_payable)
       quantity:
